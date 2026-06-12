@@ -501,7 +501,7 @@ function graphCard(graph) {
   card.querySelector('[data-action="legend"]').onclick = () => toggleGraphLegend(graph);
   const canvas = card.querySelector('canvas');
   makeChart(graph, canvas);
-  canvas.addEventListener('click', () => openGraphLightbox(graph));
+  installGraphLightboxTrigger(canvas, graph);
   loadGraphHistory(graph);
   return card;
 }
@@ -510,6 +510,36 @@ function graphBadge(graph) {
   if (graph.source_id) return { label: 'Customized', className: 'customized' };
   if (graph.kind === 'custom') return { label: 'Custom', className: 'custom' };
   return { label: 'Default', className: 'default' };
+}
+
+function installGraphLightboxTrigger(canvas, graph) {
+  let start = null;
+  let dragged = false;
+  canvas.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    start = { x: event.clientX, y: event.clientY };
+    dragged = false;
+  });
+  canvas.addEventListener('pointermove', event => {
+    if (!start) return;
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5) dragged = true;
+  });
+  canvas.addEventListener('pointerup', () => {
+    start = null;
+  });
+  canvas.addEventListener('pointercancel', () => {
+    start = null;
+    dragged = true;
+  });
+  canvas.addEventListener('click', event => {
+    if (dragged) {
+      event.preventDefault();
+      event.stopPropagation();
+      dragged = false;
+      return;
+    }
+    openGraphLightbox(graph);
+  });
 }
 
 function makeChart(graph, canvas, options = {}) {
@@ -544,7 +574,7 @@ function makeChart(graph, canvas, options = {}) {
         legend: { display: showLegend, labels: { boxWidth: 10, boxHeight: 10 } },
         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatValue(ctx.parsed.y, axisSymbol(graph, ctx.dataset.yAxisID))}` } },
         zoom: {
-          pan: { enabled: true, mode: 'x', modifierKey: 'shift' },
+          pan: { enabled: true, mode: 'x' },
           zoom: { wheel: { enabled: true, modifierKey: 'ctrl' }, pinch: { enabled: true }, mode: 'x' },
         },
       },
