@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="rigscope-assets-hash" content="{{ASSETS_HASH}}">
+  <title>rigscope</title>
+  <link rel="stylesheet" href="/static/styles.css?v={{ASSETS_HASH}}">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="brand">rigscope</div>
+      <div class="subtle" id="buildText">loading daemon</div>
+    </div>
+    <div class="summary-grid" id="summaryGrid"></div>
+    <div class="top-actions">
+      <span class="pill" id="socketState">connecting</span>
+      <div class="range" id="rangeButtons"></div>
+      <button class="icon-button" id="graphDrawerButton" title="Show unused graphs">Graphs</button>
+      <button class="icon-button" id="pauseButton" title="Pause live graph updates">Pause</button>
+      <button class="primary-button" id="addGraphButton">Add graph</button>
+    </div>
+  </header>
+
+  <div class="update-banner" id="updateBanner" hidden>
+    <span>A newer rigscope UI is available.</span>
+    <button id="reloadButton">Reload</button>
+  </div>
+
+  <main>
+    <section class="dashboard" id="dashboard"></section>
+  </main>
+
+  <aside class="graph-drawer" id="graphDrawer" hidden>
+    <div class="drawer-head">
+      <div>
+        <h2>Unused Graphs</h2>
+        <p>Drag a graph into the dashboard.</p>
+      </div>
+      <button class="ghost-button" id="graphDrawerClose">Close</button>
+    </div>
+    <div class="drawer-list" id="graphDrawerList"></div>
+  </aside>
+
+  <dialog id="graphDialog">
+    <form method="dialog" class="dialog-card" id="graphForm">
+      <div class="dialog-head">
+        <div>
+          <h2 id="dialogTitle">Graph</h2>
+          <p id="dialogSubtitle">Create a custom graph from available metrics.</p>
+        </div>
+        <button value="cancel" class="ghost-button">Close</button>
+      </div>
+      <div class="editor-grid">
+        <label>Title <input id="graphTitle" required></label>
+        <label>Y label <input id="graphYLabel"></label>
+        <label>Y scale <select id="graphYScale"><option value="linear">Linear</option><option value="logarithmic">Logarithmic</option></select></label>
+        <label>Y min <input id="graphYMin" inputmode="decimal"></label>
+        <label>Y max <input id="graphYMax" inputmode="decimal"></label>
+        <label class="checkbox-label"><input id="graphStacked" type="checkbox"> Stack series</label>
+        <label class="wide">Metric search <input id="metricSearch" placeholder="gpu_power, temperature, network"></label>
+      </div>
+      <div class="unit-filter" id="unitFilter" aria-label="Metric unit filter"></div>
+      <div class="metric-picker" id="metricPicker"></div>
+      <div class="series-list" id="seriesList"></div>
+      <menu>
+        <button value="cancel" class="ghost-button">Cancel</button>
+        <button id="saveGraphButton" value="default" class="primary-button">Save custom graph</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="/static/vendor/chartjs/chart.umd.min.js?v={{ASSETS_HASH}}"></script>
+  <script src="/static/vendor/chartjs-adapter-date-fns/chartjs-adapter-date-fns.bundle.min.js?v={{ASSETS_HASH}}"></script>
+  <script src="/static/vendor/hammerjs/hammer.min.js?v={{ASSETS_HASH}}"></script>
+  <script src="/static/vendor/chartjs-plugin-zoom/chartjs-plugin-zoom.min.js?v={{ASSETS_HASH}}"></script>
+  <script src="/static/vendor/sortablejs/Sortable.min.js?v={{ASSETS_HASH}}"></script>
+  <script type="module" src="/static/app.js?v={{ASSETS_HASH}}"></script>
+</body>
+</html>
