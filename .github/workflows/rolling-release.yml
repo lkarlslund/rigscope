@@ -1,0 +1,115 @@
+name: Rolling release
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build rolling Linux x64 release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Compute release metadata
+        id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          latest_tag="$(gh release list --limit 100 --json tagName --jq '[.[].tagName | select(test("^r[0-9]{4}$"))][0] // ""')"
+          if [[ -n "$latest_tag" ]]; then
+            git fetch --force origin "refs/tags/${latest_tag}:refs/tags/${latest_tag}" || true
+          fi
+
+          if [[ -n "$latest_tag" ]] && git rev-parse -q --verify "refs/tags/${latest_tag}" >/dev/null; then
+            if [[ "$(git rev-parse HEAD)" == "$(git rev-parse "${latest_tag}")" ]]; then
+              echo "changed=false" >>"$GITHUB_OUTPUT"
+              echo "No changes since ${latest_tag}; skipping release."
+              exit 0
+            fi
+            previous_number="${latest_tag#r}"
+            next_number=$((10#$previous_number + 1))
+            changelog_range="${latest_tag}..HEAD"
+          else
+            next_number=1
+            changelog_range="HEAD"
+          fi
+
+          tag="$(printf 'r%04d' "$next_number")"
+          short_sha="$(git rev-parse --short=12 HEAD)"
+          built_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+          {
+            echo "changed=true"
+            echo "tag=${tag}"
+            echo "short_sha=${short_sha}"
+            echo "built_at=${built_at}"
+          } >>"$GITHUB_OUTPUT"
+
+          {
+            echo "## rigscope ${tag}"
+            echo
+            echo "Linux x64 rolling release built from ${short_sha}."
+            echo
+            echo "### Changelog"
+            echo
+            git log --no-merges --format='- %s (%h)' "$changelog_range"
+          } > release-notes.md
+
+      - name: Run tests
+        if: steps.meta.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          node --check internal/web/static/app.js
+          go test ./...
+
+      - name: Build Linux x64 artifact
+        if: steps.meta.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+          BUILT_AT: ${{ steps.meta.outputs.built_at }}
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: "1"
+        run: |
+          set -euo pipefail
+          mkdir -p dist/rigscope-linux-amd64
+          go build \
+            -trimpath \
+            -ldflags "-s -w -X github.com/lkarlslund/rigscope/internal/buildinfo.Version=${TAG} -X github.com/lkarlslund/rigscope/internal/buildinfo.Commit=${SHORT_SHA} -X github.com/lkarlslund/rigscope/internal/buildinfo.BuiltAt=${BUILT_AT}" \
+            -o dist/rigscope-linux-amd64/rigscope \
+            ./cmd/rigscope
+          cp README.md LICENSE dist/rigscope-linux-amd64/
+          tar -C dist -czf "dist/rigscope-${TAG}-linux-amd64.tar.gz" rigscope-linux-amd64
+          sha256sum "dist/rigscope-${TAG}-linux-amd64.tar.gz" > "dist/rigscope-${TAG}-linux-amd64.tar.gz.sha256"
+
+      - name: Publish GitHub release
+        if: steps.meta.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes-file release-notes.md \
+            "dist/rigscope-${TAG}-linux-amd64.tar.gz" \
+            "dist/rigscope-${TAG}-linux-amd64.tar.gz.sha256"
