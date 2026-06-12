@@ -12,6 +12,11 @@ const graphDrawerButton = document.getElementById('graphDrawerButton');
 const graphDrawer = document.getElementById('graphDrawer');
 const graphDrawerClose = document.getElementById('graphDrawerClose');
 const graphDrawerList = document.getElementById('graphDrawerList');
+const graphLightbox = document.getElementById('graphLightbox');
+const lightboxTitle = document.getElementById('lightboxTitle');
+const lightboxSubtitle = document.getElementById('lightboxSubtitle');
+const lightboxClose = document.getElementById('lightboxClose');
+const lightboxCanvas = document.getElementById('lightboxCanvas');
 const graphDialog = document.getElementById('graphDialog');
 const graphForm = document.getElementById('graphForm');
 const dialogTitle = document.getElementById('dialogTitle');
@@ -49,7 +54,11 @@ let catalog = { metrics: [], defaults: [] };
 let layout = { version: 1, time_range: '15m', order: [] };
 let charts = new Map();
 let graphData = new Map();
+let lightboxChart = null;
+let lightboxGraph = null;
 let liveCounters = new Map();
+let catalogRefreshTimer = null;
+let catalogRefreshInFlight = false;
 let paused = false;
 let dirtyEditor = false;
 let editingGraph = null;
@@ -490,7 +499,9 @@ function graphCard(graph) {
   card.querySelector('[data-action="hide"]').onclick = () => hideGraph(graph);
   card.querySelector('[data-action="reset"]').onclick = () => charts.get(graph.id)?.resetZoom?.();
   card.querySelector('[data-action="legend"]').onclick = () => toggleGraphLegend(graph);
-  makeChart(graph, card.querySelector('canvas'));
+  const canvas = card.querySelector('canvas');
+  makeChart(graph, canvas);
+  canvas.addEventListener('click', () => openGraphLightbox(graph));
   loadGraphHistory(graph);
   return card;
 }
@@ -501,7 +512,7 @@ function graphBadge(graph) {
   return { label: 'Default', className: 'default' };
 }
 
-function makeChart(graph, canvas) {
+function makeChart(graph, canvas, options = {}) {
   const stacked = !!graph.stacked && graph.axes?.y?.mode !== 'logarithmic';
   const showLegend = graph.show_legend !== false;
   const datasets = (graph.series || []).map((item, index) => ({
@@ -544,7 +555,8 @@ function makeChart(graph, canvas) {
       },
     },
   });
-  charts.set(graph.id, chart);
+  if (options.store !== false) charts.set(graph.id, chart);
+  return chart;
 }
 
 function axisOptions(axis, stacked = false) {
@@ -578,14 +590,39 @@ function axisSymbol(graph, axisID) {
   return axis?.symbol || axis?.unit || '';
 }
 
+function openGraphLightbox(graph) {
+  closeGraphLightbox();
+  lightboxGraph = graph;
+  lightboxTitle.textContent = graph.title || 'Graph';
+  lightboxSubtitle.textContent = (graph.series || []).map(s => s.legend || s.metric.name).join(', ');
+  lightboxChart = makeChart(graph, lightboxCanvas, { store: false });
+  graphLightbox.showModal();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    lightboxChart?.resize();
+    if (lightboxChart) applyGraphDataToChart(graph, lightboxChart);
+  }));
+}
+
+function closeGraphLightbox() {
+  if (graphLightbox.open) {
+    graphLightbox.close();
+    return;
+  }
+  if (lightboxChart) {
+    lightboxChart.destroy();
+    lightboxChart = null;
+  }
+  lightboxGraph = null;
+}
+
 function missingDataSpans(chart) {
   const spans = [];
   for (const dataset of chart.data.datasets || []) {
     const data = dataset.data || [];
     for (let i = 0; i < data.length; i++) {
-      if (data[i]?.y !== null) continue;
+      if (data[i]?.y !== null || data[i]?.missing !== true) continue;
       const start = data[i].x;
-      while (i + 1 < data.length && data[i + 1]?.y === null) i++;
+      while (i + 1 < data.length && data[i + 1]?.y === null && data[i + 1]?.missing === true) i++;
       const end = data[i].x;
       if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
         spans.push({ start, end });
@@ -642,7 +679,11 @@ async function refreshAllGraphs() {
 
 function applyGraphData(graph) {
   const chart = charts.get(graph.id);
-  if (!chart) return;
+  if (chart) applyGraphDataToChart(graph, chart);
+  if (lightboxGraph?.id === graph.id && lightboxChart) applyGraphDataToChart(graph, lightboxChart);
+}
+
+function applyGraphDataToChart(graph, chart) {
   const data = graphData.get(graph.id) || [];
   chart.data.datasets.forEach((dataset, index) => {
     const item = graph.series?.[index];
@@ -656,8 +697,8 @@ function pointsWithGaps(points, item, graph) {
   let previousX = null;
   for (const [x, y] of points) {
     if (previousX !== null && x - previousX > gapThresholdMs) {
-      out.push({ x: previousX + 1, y: null });
-      out.push({ x: x - 1, y: null });
+      out.push({ x: previousX + 1, y: null, missing: true });
+      out.push({ x: x - 1, y: null, missing: true });
     }
     out.push({ x, y: normalizeSeriesValue(y, item, graph) });
     previousX = x;
@@ -678,25 +719,40 @@ function applyLivePoints(points, timestamp = Date.now()) {
   const now = timestamp;
   const liveRates = new Map();
   for (const graph of allGraphs()) {
-    const chart = charts.get(graph.id);
-    if (!chart) continue;
+    const cardChart = charts.get(graph.id);
+    const targets = [];
+    if (cardChart) targets.push(cardChart);
+    if (lightboxGraph?.id === graph.id && lightboxChart) targets.push(lightboxChart);
+    if (!targets.length) continue;
+    applyLivePointsToCharts(graph, targets, points, now, liveRates);
+  }
+}
+
+function applyLivePointsToCharts(graph, targets, points, now, liveRates) {
+  const updates = [];
+  (graph.series || []).forEach((item, index) => {
+    const point = points.find(p => p.name === item.metric.name && sameLabels(p.labels || {}, item.metric.labels || {}));
+    if (!point) return;
+    const transformed = liveSeriesValue(point, item, now, liveRates);
+    if (!transformed.ok || paused) return;
+    updates.push({ index, value: normalizeSeriesValue(transformed.value, item, graph) });
+  });
+  if (!updates.length) return;
+  const cutoff = now - timeRangeMs();
+  for (const chart of targets) {
     let changed = false;
-    (graph.series || []).forEach((item, index) => {
-      const point = points.find(p => p.name === item.metric.name && sameLabels(p.labels || {}, item.metric.labels || {}));
-      if (!point) return;
-      const transformed = liveSeriesValue(point, item, now, liveRates);
-      if (!transformed.ok || paused) return;
-      const data = chart.data.datasets[index].data;
+    for (const update of updates) {
+      const data = chart.data.datasets[update.index]?.data;
+      if (!data) continue;
       const previous = lastFinitePoint(data);
       if (previous && now - previous.x > gapThresholdMs) {
-        data.push({ x: previous.x + 1, y: null });
-        data.push({ x: now - 1, y: null });
+        data.push({ x: previous.x + 1, y: null, missing: true });
+        data.push({ x: now - 1, y: null, missing: true });
       }
-      data.push({ x: now, y: normalizeSeriesValue(transformed.value, item, graph) });
-      const cutoff = now - timeRangeMs();
+      data.push({ x: now, y: update.value });
       while (data.length && data[0].x < cutoff) data.shift();
       changed = true;
-    });
+    }
     if (changed) chart.update('none');
   }
 }
@@ -741,6 +797,37 @@ function sameLabels(a, b) {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   for (const key of keys) if ((a[key] || '') !== (b[key] || '')) return false;
   return true;
+}
+
+function catalogHasPoint(point) {
+  const key = metricKey(point);
+  return (catalog.metrics || []).some(metric => metricKey(metric) === key);
+}
+
+function scheduleCatalogRefreshFromPoints(points) {
+  if (!points.some(point => point?.name && !catalogHasPoint(point))) return;
+  if (catalogRefreshTimer) return;
+  catalogRefreshTimer = setTimeout(refreshCatalogFromServer, 150);
+}
+
+async function refreshCatalogFromServer() {
+  catalogRefreshTimer = null;
+  if (catalogRefreshInFlight) {
+    catalogRefreshTimer = setTimeout(refreshCatalogFromServer, 250);
+    return;
+  }
+  catalogRefreshInFlight = true;
+  const previousDefaults = new Map((catalog.defaults || []).map(graph => [graph.id, graph.series?.length || 0]));
+  try {
+    const next = await api('/api/catalog');
+    catalog = next;
+    const changed = (catalog.defaults || []).some(graph => previousDefaults.get(graph.id) !== (graph.series?.length || 0));
+    if (changed) await refreshAllGraphs();
+  } catch (err) {
+    console.warn('catalog refresh failed', err);
+  } finally {
+    catalogRefreshInFlight = false;
+  }
 }
 
 async function saveLayout() {
@@ -1004,6 +1091,7 @@ function connectWS() {
     if (msg.type === 'sample') {
       const points = msg.data?.points || [];
       if (points.length) lastPointTime = msg.time || Date.now();
+      scheduleCatalogRefreshFromPoints(points);
       applyLivePoints(points, msg.time || Date.now());
     }
   };
@@ -1052,6 +1140,17 @@ graphDrawerButton.onclick = () => {
   if (!graphDrawer.hidden) renderGraphDrawer();
 };
 graphDrawerClose.onclick = () => { graphDrawer.hidden = true; };
+lightboxClose.onclick = () => closeGraphLightbox();
+graphLightbox.addEventListener('click', event => {
+  if (event.target === graphLightbox) closeGraphLightbox();
+});
+graphLightbox.addEventListener('close', () => {
+  if (lightboxChart) {
+    lightboxChart.destroy();
+    lightboxChart = null;
+  }
+  lightboxGraph = null;
+});
 addGraphButton.onclick = () => openEditor();
 metricSearch.oninput = () => renderMetricPicker();
 graphYScale.onchange = () => {

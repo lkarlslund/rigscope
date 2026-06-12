@@ -43,6 +43,19 @@
     <div class="drawer-list" id="graphDrawerList"></div>
   </aside>
 
+  <dialog id="graphLightbox">
+    <div class="lightbox-card">
+      <div class="lightbox-head">
+        <div>
+          <h2 id="lightboxTitle">Graph</h2>
+          <p id="lightboxSubtitle"></p>
+        </div>
+        <button class="ghost-button" id="lightboxClose" type="button">Close</button>
+      </div>
+      <div class="lightbox-canvas"><canvas id="lightboxCanvas"></canvas></div>
+    </div>
+  </dialog>
+
   <dialog id="graphDialog">
     <form method="dialog" class="dialog-card" id="graphForm">
       <div class="dialog-head">
