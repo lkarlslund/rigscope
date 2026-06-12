@@ -18,10 +18,20 @@ type Store struct {
 }
 
 func Open(path string, retention time.Duration) (*Store, error) {
+	return open(path, retention)
+}
+
+func OpenInMemory(retention time.Duration) (*Store, error) {
+	return open("", retention)
+}
+
+func open(path string, retention time.Duration) (*Store, error) {
 	opts := []tstorage.Option{
-		tstorage.WithDataPath(path),
 		tstorage.WithTimestampPrecision(tstorage.Milliseconds),
 		tstorage.WithPartitionDuration(time.Hour),
+	}
+	if path != "" {
+		opts = append(opts, tstorage.WithDataPath(path))
 	}
 	if retention > 0 {
 		opts = append(opts, tstorage.WithRetention(retention))

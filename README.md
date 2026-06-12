@@ -28,6 +28,14 @@ For development, use the auto-restart runner:
 
 It rebuilds on Go/module/script changes, restarts `rigscope`, and verifies the new process through `/api/build`.
 
+On Windows, use the PowerShell dev runner:
+
+```powershell
+.\rigscope-dev.ps1
+```
+
+If `go` is not visible in a newly opened shell, make sure `C:\Program Files\Go\bin` is on `PATH`.
+
 Useful flags:
 
 ```bash
@@ -47,26 +55,32 @@ go run ./cmd/rigscope metrics
 go run ./cmd/rigscope --server http://127.0.0.1:7077 status
 ```
 
+Run the test suite:
+
+```bash
+go test ./...
+```
+
 ## Collectors
 
-Collectors self-register and are autodetected by default:
+Collectors self-register and are autodetected by default. Windows supports native system telemetry for CPU, memory, network, disk I/O, filesystems, process counts, and rigscope's own process. Linux additionally supports `/proc`, `/sys`, DRM, XDNA, zenpower, NVML, and ROCm sources where available.
 
-- `nvidia`: NVIDIA power, clocks, utilization, temperature, and memory through NVML.
-- `drm`: AMD GPU/APU power, utilization, memory, and temperature through Linux DRM/sysfs.
-- `rocm`: fallback AMD GPU/APU power, utilization, temperature, and memory through the ROCm SMI library when DRM/sysfs does not cover the device.
-- `zenpower`: CPU package power from Linux hwmon `power1_input`.
-- `load`: load average from `/proc/loadavg`.
-- `memory`: memory and swap from `/proc/meminfo`.
-- `cpu`: CPU core count and usage percentages from `/proc/stat`.
-- `network`: per-interface counters from `/proc/net/dev`.
-- `disk`: block device I/O counters from `/proc/diskstats`.
-- `filesystem`: mounted filesystem usage from `/proc/self/mounts` and `statfs`.
-- `process`: process state and thread counts from `/proc`.
-- `self`: rigscope RSS and open file descriptor counts from `/proc/self`.
-- `thermal`: hwmon and thermal-zone temperatures from `/sys`.
-- `power_supply`: battery/PSU capacity, power, energy, and temperature from `/sys/class/power_supply`.
-- `drm`: AMD/Intel DRM sysfs GPU utilization, VRAM/GTT, power, and temperature where exposed.
-- `xdna`: AMD XDNA/Ryzen AI NPU presence, identity, PCI metadata, and runtime-PM residency from `/sys/class/accel`.
+- `cpu`: CPU core count and usage percentages from `/proc/stat` on Linux and native CPU counters on Windows.
+- `memory`: memory and swap/pagefile metrics from `/proc/meminfo` on Linux and native memory counters on Windows.
+- `network`: per-interface counters from `/proc/net/dev` on Linux and native interface counters on Windows.
+- `disk`: block device or physical disk I/O counters.
+- `filesystem`: mounted filesystem or Windows drive usage.
+- `process`: process state and thread counts.
+- `self`: rigscope RSS and open file descriptor or handle counts.
+- `nvidia`: Linux NVIDIA power, clocks, utilization, temperature, and memory through NVML.
+- `drm`: Linux AMD/Intel DRM sysfs GPU utilization, VRAM/GTT, power, and temperature where exposed.
+- `rocm`: Linux fallback AMD GPU/APU power, utilization, temperature, and memory through the ROCm SMI library when DRM/sysfs does not cover the device.
+- `zenpower`: Linux CPU package power from hwmon `power1_input`.
+- `load`: Linux load average from `/proc/loadavg`.
+- `socket`: Linux socket and TCP connection counts from `/proc/net`.
+- `thermal`: Linux hwmon and thermal-zone temperatures from `/sys`.
+- `power_supply`: Linux battery/PSU capacity, power, energy, and temperature from `/sys/class/power_supply`.
+- `xdna`: Linux AMD XDNA/Ryzen AI NPU presence, identity, PCI metadata, and runtime-PM residency from `/sys/class/accel`.
 
 Metric metadata includes `unit` and `symbol`, such as `watt`/`W`, `celsius`/`°C`, `byte`/`B`, `percent`/`%`, and `count`/`count`.
 

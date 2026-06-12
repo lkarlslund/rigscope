@@ -29,7 +29,7 @@ func (c fakeCollector) Sample(context.Context) (map[string]any, error) {
 }
 
 func TestRunSamplesUntilCanceled(t *testing.T) {
-	s, err := store.Open(t.TempDir(), time.Hour)
+	s, err := store.OpenInMemory(time.Hour)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}

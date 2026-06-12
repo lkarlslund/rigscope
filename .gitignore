@@ -2,6 +2,7 @@ runs/
 powerbench
 wattd
 bin/
+.tmp/
 data/
 data-dev/
 *.test

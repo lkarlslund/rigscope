@@ -8,11 +8,9 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -240,7 +238,7 @@ func serveCommand(opts serveOptions) error {
 		_ = db.Close()
 	}()
 
-	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalCtx, stop := signalContext(context.Background())
 	defer stop()
 	ctx, cancel := context.WithCancel(signalCtx)
 	defer cancel()
@@ -363,7 +361,7 @@ func runCommand(opts runOptions, workload []string) error {
 	safeName := strings.NewReplacer("/", "-", " ", "-").Replace(opts.name)
 	outputDir := filepath.Join(opts.outputRoot, stamp+"-"+safeName)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signalContext(context.Background())
 	defer stop()
 
 	cfg := run.Config{

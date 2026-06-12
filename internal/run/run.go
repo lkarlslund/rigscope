@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/lkarlslund/rigscope/internal/collectors"
@@ -92,7 +91,7 @@ func Workload(ctx context.Context, cfg Config) (int, error) {
 	}
 
 	cmd := exec.CommandContext(ctx, cfg.Command[0], cfg.Command[1:]...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	configureCommand(cmd)
 
 	stdoutR, stdoutW, err := os.Pipe()
 	if err != nil {

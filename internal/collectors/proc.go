@@ -1,3 +1,5 @@
+//go:build linux
+
 package collectors
 
 import (
@@ -7,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 func init() {
@@ -503,12 +504,10 @@ func (c Filesystem) Sample(context.Context) (map[string]any, error) {
 			continue
 		}
 		seen[mount] = true
-		var stat syscall.Statfs_t
-		if err := syscall.Statfs(mount, &stat); err != nil {
+		total, free, ok := filesystemUsage(mount)
+		if !ok {
 			continue
 		}
-		total := float64(stat.Blocks) * float64(stat.Bsize)
-		free := float64(stat.Bavail) * float64(stat.Bsize)
 		used := total - free
 		labels := map[string]string{"mount": mount, "fstype": fsType}
 		m = append(m,
