@@ -15,6 +15,7 @@ import (
 
 type fakeCollector struct {
 	name string
+	err  error
 }
 
 func (c fakeCollector) Name() string {
@@ -22,6 +23,9 @@ func (c fakeCollector) Name() string {
 }
 
 func (c fakeCollector) Sample(context.Context) (map[string]any, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
 	return map[string]any{
 		"collector":           c.name,
 		"cpu_package_power_w": 42.5,
@@ -85,5 +89,26 @@ func TestRunSamplesUntilCanceled(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("Run() did not stop after cancellation")
+	}
+}
+
+func TestCollectorErrorsReportsFailedCollectors(t *testing.T) {
+	sample := map[string]any{
+		"collectors": []map[string]any{
+			{"collector": "nvidia"},
+			{"collector": "xdna", "error": "sample timed out after 800ms"},
+			{"error": "missing collector name"},
+		},
+	}
+
+	got := collectorErrors(sample)
+	if len(got) != 2 {
+		t.Fatalf("len(errors) = %d, want 2: %#v", len(got), got)
+	}
+	if got[0]["collector"] != "xdna" || got[0]["error"] != "sample timed out after 800ms" {
+		t.Fatalf("first error = %#v", got[0])
+	}
+	if got[1]["collector"] != "unknown" || got[1]["error"] != "missing collector name" {
+		t.Fatalf("second error = %#v", got[1])
 	}
 }

@@ -7,6 +7,7 @@ const rangeButtons = document.getElementById('rangeButtons');
 const pauseButton = document.getElementById('pauseButton');
 const updateBanner = document.getElementById('updateBanner');
 const reloadButton = document.getElementById('reloadButton');
+const collectorAlert = document.getElementById('collectorAlert');
 const addGraphButton = document.getElementById('addGraphButton');
 const graphDrawerButton = document.getElementById('graphDrawerButton');
 const graphDrawer = document.getElementById('graphDrawer');
@@ -350,6 +351,25 @@ function renderSummary(points = []) {
     tile.innerHTML = `<span class="subtle">${title}</span><b>${value || (point ? formatValue(point.value, point.symbol || point.unit) : 'n/a')}</b>`;
     summaryGrid.append(tile);
   }
+}
+
+function renderCollectorAlert(errors = []) {
+  const active = (errors || []).filter(item => item?.collector && item?.error);
+  if (!active.length) {
+    collectorAlert.hidden = true;
+    collectorAlert.innerHTML = '';
+    return;
+  }
+  const shown = active.slice(0, 4);
+  const extra = active.length - shown.length;
+  const details = shown
+    .map(item => `<strong>${escapeHTML(item.collector)}</strong>: ${escapeHTML(item.error)}`)
+    .join(' · ');
+  collectorAlert.hidden = false;
+  collectorAlert.innerHTML = `
+    <span>${active.length === 1 ? 'Collector issue' : `${active.length} collector issues`}</span>
+    <span class="collector-alert-details">${details}${extra > 0 ? ` · +${extra} more` : ''}</span>
+  `;
 }
 
 function totalKnownPower(points) {
@@ -1214,6 +1234,7 @@ function connectWS() {
     }
     if (msg.type === 'sample') {
       const points = msg.data?.points || [];
+      renderCollectorAlert(msg.data?.collector_errors || []);
       if (points.length) lastPointTime = msg.time || Date.now();
       scheduleCatalogRefreshFromPoints(points);
       applyLivePoints(points, msg.time || Date.now());

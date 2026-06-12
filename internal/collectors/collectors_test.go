@@ -103,7 +103,7 @@ func TestPreferLowOverheadCollectorsKeepsROCMWithoutAMDFromDRM(t *testing.T) {
 func TestSamplerTimesOutOneCollectorWithoutBlockingOthers(t *testing.T) {
 	blocked := &blockingCollector{name: "blocked", started: make(chan struct{}), release: make(chan struct{})}
 	fast := staticCollector{name: "fast"}
-	sampler := Sampler{Timeout: 20 * time.Millisecond}
+	sampler := Sampler{Timeout: 20 * time.Millisecond, StaleAfter: time.Hour}
 
 	sample := sampler.SampleAll(context.Background(), []Collector{blocked, fast})
 	records := sample["collectors"].([]map[string]any)
@@ -133,6 +133,21 @@ func TestSamplerTimesOutOneCollectorWithoutBlockingOthers(t *testing.T) {
 	}
 	if got := blocked.calls.Load(); got != 1 {
 		t.Fatalf("blocked calls after second sample = %d, want 1", got)
+	}
+
+	close(blocked.release)
+}
+
+func TestSamplerRetriesStaleInFlightCollector(t *testing.T) {
+	blocked := &blockingCollector{name: "blocked", started: make(chan struct{}), release: make(chan struct{})}
+	sampler := Sampler{Timeout: 10 * time.Millisecond, StaleAfter: 15 * time.Millisecond}
+
+	_ = sampler.SampleAll(context.Background(), []Collector{blocked})
+	time.Sleep(20 * time.Millisecond)
+	sample := sampler.SampleAll(context.Background(), []Collector{staticCollector{name: "blocked"}})
+	records := sample["collectors"].([]map[string]any)
+	if records[0]["collector"] != "blocked" || records[0]["ok"] != true {
+		t.Fatalf("stale retry record = %#v, want successful replacement sample", records[0])
 	}
 
 	close(blocked.release)

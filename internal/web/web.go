@@ -91,14 +91,17 @@ func (s *Server) listenAndServe(ctx context.Context, addr string) error {
 	}
 }
 
-func (s *Server) PublishSample(timestamp time.Time, points []series.Point) {
+func (s *Server) PublishSample(timestamp time.Time, points []series.Point, collectorErrors []map[string]string) {
 	if s.Hub == nil {
 		return
 	}
 	s.Hub.Broadcast(WSEvent{
 		Type: "sample",
 		Time: timestamp.UnixMilli(),
-		Data: map[string]any{"points": points},
+		Data: map[string]any{
+			"points":           points,
+			"collector_errors": collectorErrors,
+		},
 	})
 }
 
