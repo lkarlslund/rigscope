@@ -540,8 +540,19 @@ function installGraphLightboxTrigger(canvas, graph) {
       dragged = false;
       return;
     }
+    if (!eventInChartArea(canvas, event)) return;
     openGraphLightbox(graph);
   });
+}
+
+function eventInChartArea(canvas, event) {
+  const chart = Chart.getChart(canvas);
+  if (!chart?.chartArea) return false;
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const area = chart.chartArea;
+  return x >= area.left && x <= area.right && y >= area.top && y <= area.bottom;
 }
 
 function makeChart(graph, canvas, options = {}) {

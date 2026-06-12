@@ -11,19 +11,25 @@ import (
 )
 
 type Monitor struct {
-	Collectors []collectors.Collector
-	Store      *store.Store
-	Interval   time.Duration
-	Log        *slog.Logger
-	OnSample   func(time.Time, []series.Point)
+	Collectors    []collectors.Collector
+	Store         *store.Store
+	Interval      time.Duration
+	SampleTimeout time.Duration
+	Log           *slog.Logger
+	OnSample      func(time.Time, []series.Point)
 
 	counterRates series.CounterRateTransformer
+	sampler      collectors.Sampler
 }
 
 func (m *Monitor) Run(ctx context.Context) error {
 	if m.Interval <= 0 {
 		m.Interval = time.Second
 	}
+	if m.SampleTimeout <= 0 {
+		m.SampleTimeout = m.Interval * 8 / 10
+	}
+	m.sampler.Timeout = m.SampleTimeout
 	ticker := time.NewTicker(m.Interval)
 	defer ticker.Stop()
 
@@ -38,7 +44,7 @@ func (m *Monitor) Run(ctx context.Context) error {
 }
 
 func (m *Monitor) sample(ctx context.Context) {
-	sample := collectors.SampleAll(ctx, m.Collectors)
+	sample := m.sampler.SampleAll(ctx, m.Collectors)
 	points := series.FlattenSample(sample)
 	timestamp := time.Now()
 	points = m.counterRates.Transform(timestamp, points)

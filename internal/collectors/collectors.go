@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -120,6 +121,121 @@ func SampleAll(ctx context.Context, cs []Collector) map[string]any {
 	}
 	sample["collectors"] = records
 	return sample
+}
+
+type Sampler struct {
+	Timeout time.Duration
+
+	mu     sync.Mutex
+	states map[string]*collectorState
+}
+
+type collectorState struct {
+	inFlight bool
+}
+
+type collectorResult struct {
+	index  int
+	record map[string]any
+}
+
+func (s *Sampler) SampleAll(ctx context.Context, cs []Collector) map[string]any {
+	sample := map[string]any{
+		"t_wall":      float64(time.Now().UnixNano()) / 1e9,
+		"t_unix_nano": time.Now().UnixNano(),
+		"collectors":  []map[string]any{},
+	}
+	records := make([]map[string]any, len(cs))
+	results := make(chan collectorResult, len(cs))
+	pending := 0
+	for i, c := range cs {
+		key := collectorKey(i, c)
+		if !s.tryStart(key) {
+			records[i] = collectorError(c.Name(), "previous sample still running")
+			continue
+		}
+		pending++
+		go s.sampleCollector(ctx, key, i, c, results)
+	}
+
+	timeout := s.Timeout
+	if timeout <= 0 {
+		timeout = time.Second
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for pending > 0 {
+		select {
+		case result := <-results:
+			records[result.index] = result.record
+			pending--
+		case <-timer.C:
+			for i, c := range cs {
+				if records[i] == nil {
+					records[i] = collectorError(c.Name(), fmt.Sprintf("sample timed out after %s", timeout))
+				}
+			}
+			pending = 0
+		case <-ctx.Done():
+			for i, c := range cs {
+				if records[i] == nil {
+					records[i] = collectorError(c.Name(), ctx.Err().Error())
+				}
+			}
+			pending = 0
+		}
+	}
+	sample["collectors"] = records
+	return sample
+}
+
+func (s *Sampler) sampleCollector(ctx context.Context, key string, index int, c Collector, results chan<- collectorResult) {
+	defer s.finish(key)
+	record, err := c.Sample(ctx)
+	if err != nil {
+		record = collectorError(c.Name(), err.Error())
+	}
+	if _, ok := record["collector"]; !ok {
+		record["collector"] = c.Name()
+	}
+	select {
+	case results <- collectorResult{index: index, record: record}:
+	case <-ctx.Done():
+	}
+}
+
+func (s *Sampler) tryStart(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.states == nil {
+		s.states = map[string]*collectorState{}
+	}
+	state := s.states[key]
+	if state == nil {
+		state = &collectorState{}
+		s.states[key] = state
+	}
+	if state.inFlight {
+		return false
+	}
+	state.inFlight = true
+	return true
+}
+
+func (s *Sampler) finish(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if state := s.states[key]; state != nil {
+		state.inFlight = false
+	}
+}
+
+func collectorKey(index int, c Collector) string {
+	return fmt.Sprintf("%d:%s", index, c.Name())
+}
+
+func collectorError(name, message string) map[string]any {
+	return map[string]any{"collector": name, "error": message}
 }
 
 type NVIDIA struct{}
