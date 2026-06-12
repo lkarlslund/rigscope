@@ -564,7 +564,7 @@ function axisOptions(axis, stacked = false) {
   const mode = axis.mode === 'logarithmic' ? 'logarithmic' : 'linear';
   const opts = {
     type: mode,
-    beginAtZero: !!axis.begin_zero,
+    beginAtZero: shouldBeginAtZero(axis),
     stacked,
     title: { display: !!axis.label, text: axis.symbol ? `${axis.label} (${axis.symbol})` : axis.label || '' },
     ticks: {
@@ -574,6 +574,19 @@ function axisOptions(axis, stacked = false) {
   if (Number.isFinite(axis.min) && (mode !== 'logarithmic' || axis.min > 0)) opts.min = axis.min;
   if (Number.isFinite(axis.max)) opts.max = axis.max;
   return opts;
+}
+
+function shouldBeginAtZero(axis) {
+  if (axis.mode === 'logarithmic') return false;
+  const unit = normalizeUnit(axis.unit || axis.symbol);
+  if (unit === 'celsius' || unit === 'megahertz') return false;
+  return !!axis.begin_zero;
+}
+
+function defaultBeginZeroForAxis(axis) {
+  if (axis.mode === 'logarithmic') return false;
+  const unit = normalizeUnit(axis.unit || axis.symbol);
+  return ['watt', 'percent', 'byte', 'byte/second', 'count', 'ratio', 'second'].includes(unit);
 }
 
 function formatAxisTick(value, symbol) {
@@ -1054,8 +1067,8 @@ function saveGraphFromDialog() {
     mode: graphYScale.value === 'logarithmic' ? 'logarithmic' : 'linear',
     min: parseNumber(graphYMin.value),
     max: parseNumber(graphYMax.value),
-    begin_zero: graphYScale.value !== 'logarithmic',
   };
+  base.axes.y.begin_zero = defaultBeginZeroForAxis(base.axes.y);
   layout.custom_graphs = (layout.custom_graphs || []).filter(g => g.id !== base.id);
   layout.hidden_custom = (layout.hidden_custom || []).filter(id => id !== base.id);
   layout.custom_graphs.push(base);
