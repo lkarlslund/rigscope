@@ -9,17 +9,23 @@
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <div class="brand">rigscope</div>
+    <div class="brand-block">
+      <a class="brand" href="/" aria-label="RIG Scope home">
+        <img src="/static/logo.svg?v={{ASSETS_HASH}}" alt="RIG Scope">
+      </a>
       <div class="subtle" id="buildText">loading daemon</div>
     </div>
     <div class="summary-grid" id="summaryGrid"></div>
-    <div class="top-actions">
-      <span class="pill" id="socketState">connecting</span>
-      <div class="range" id="rangeButtons"></div>
-      <button class="icon-button" id="graphDrawerButton" title="Show unused graphs">Graphs</button>
-      <button class="icon-button" id="pauseButton" title="Pause live graph updates">Pause</button>
-      <button class="primary-button" id="addGraphButton">Add graph</button>
+    <div class="action-row">
+      <div class="status-range-group">
+        <span class="pill" id="socketState">connecting</span>
+        <div class="range" id="rangeButtons"></div>
+      </div>
+      <div class="button-group" role="group" aria-label="Graph actions">
+        <button class="icon-button" id="graphDrawerButton" title="Show unused graphs">Graphs</button>
+        <button class="icon-button" id="pauseButton" title="Pause live graph updates">Pause</button>
+        <button class="primary-button" id="addGraphButton">Add graph</button>
+      </div>
     </div>
   </header>
 

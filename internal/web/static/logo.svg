@@ -1,0 +1,186 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 250" width="800" height="250">
+  <defs>
+    <!-- Text Gradients -->
+    <linearGradient id="rig-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00FF87" />
+      <stop offset="100%" stop-color="#60EFFF" />
+    </linearGradient>
+    
+    <linearGradient id="scope-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#A1A8BA" />
+    </linearGradient>
+
+    <!-- Scope Metal Gradients -->
+    <linearGradient id="scope-metal-dark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="50%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    
+    <linearGradient id="scope-metal-light" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#475569" />
+      <stop offset="50%" stop-color="#334155" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+
+    <!-- Lens Glass Gradient -->
+    <radialGradient id="lens-grad" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="70%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#05070c" />
+    </radialGradient>
+
+    <!-- Red Dot Glow -->
+    <radialGradient id="red-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FF3333" stop-opacity="1" />
+      <stop offset="40%" stop-color="#FF0000" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#FF0000" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Filters -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.7" />
+    </filter>
+    
+    <filter id="glow-green" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    
+    <filter id="glow-red" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    /* CSS Styles for animations and classes */
+    @keyframes glow-fade {
+      0% { opacity: 0.45; }
+      50% { opacity: 0.95; }
+      100% { opacity: 0.45; }
+    }
+
+    .reticle-glow {
+      animation: glow-fade 2s infinite ease-in-out;
+    }
+    
+    .logo-text-rig {
+      fill: url(#rig-grad);
+      filter: drop-shadow(0px 0px 4px rgba(0, 255, 135, 0.25));
+    }
+    
+    .logo-text-scope {
+      fill: url(#scope-grad);
+    }
+    
+    .reticle-lines {
+      stroke: #00ff66;
+      filter: drop-shadow(0px 0px 2px rgba(0, 255, 102, 0.8));
+    }
+    
+    .reticle-dots {
+      fill: #00ff66;
+      filter: drop-shadow(0px 0px 1px rgba(0, 255, 102, 0.8));
+    }
+  </style>
+
+  <!-- Main Logo Group with shadow -->
+  <g filter="url(#shadow)">
+    
+    <!-- Word: RIG -->
+    <g class="logo-text-rig">
+      <!-- R -->
+      <path transform="translate(46, 75)" d="M 0,100 L 0,0 L 50,0 C 68,0 80,12 80,30 C 80,45 70,55 55,58 L 82,100 L 58,100 L 34,62 L 20,62 L 20,100 Z M 20,44 L 48,44 C 56,44 62,38 62,30 C 62,22 56,16 48,16 L 20,16 Z" />
+      <!-- I -->
+      <rect transform="translate(143, 75)" x="0" y="0" width="20" height="100" rx="2" />
+      <!-- G -->
+      <path transform="translate(178, 75)" d="M 75,20 L 56,26 C 53,18 47,16 40,16 C 29,16 20,25 20,50 C 20,75 29,84 40,84 C 48,84 54,79 55,70 L 40,70 L 40,52 L 75,52 L 75,100 L 58,100 L 56,90 C 51,97 44,102 35,102 C 15,102 0,82 0,50 C 0,18 15,-2 38,-2 C 55,-2 70,8 75,20 Z" />
+    </g>
+    
+    <!-- Word: SCOPE -->
+    <g class="logo-text-scope">
+      <!-- S -->
+      <path transform="translate(298, 75)" d="M 72,26 L 53,32 C 51,23 46,17 38,17 C 29,17 22,22 22,30 C 22,38 28,41 42,46 C 63,53 76,60 76,78 C 76,94 61,102 38,102 C 15,102 2,91 0,73 L 19,68 C 21,78 28,83 37,83 C 47,83 55,79 55,71 C 55,63 49,60 35,55 C 16,48 2,41 2,24 C 2,8 17,-2 37,-2 C 58,-2 70,8 72,26 Z" />
+      <!-- C -->
+      <path transform="translate(386, 75)" d="M 72,20 L 53,26 C 51,18 45,16 38,16 C 26,16 20,27 20,50 C 20,73 26,84 38,84 C 45,84 51,80 53,72 L 72,78 C 68,93 55,102 38,102 C 15,102 0,82 0,50 C 0,18 15,-2 38,-2 C 55,-2 68,7 72,20 Z" />
+      
+      <!-- O (Rifle Scope Graphic) -->
+      <!-- Centered at cx=516, cy=125 -->
+      <g transform="translate(516, 125)">
+        <!-- Turrets / Adjustment Knobs -->
+        <!-- Top Turret -->
+        <rect x="-12" y="-66" width="24" height="12" rx="2" fill="url(#scope-metal-dark)" stroke="#090d14" stroke-width="1" />
+        <rect x="-8" y="-71" width="16" height="5" rx="1" fill="#475569" />
+        <!-- Right Turret -->
+        <rect x="54" y="-12" width="12" height="24" rx="2" fill="url(#scope-metal-dark)" stroke="#090d14" stroke-width="1" />
+        <rect x="66" y="-8" width="5" height="16" rx="1" fill="#475569" />
+        <!-- Left Turret Cap -->
+        <rect x="-66" y="-10" width="12" height="20" rx="2" fill="url(#scope-metal-dark)" stroke="#090d14" stroke-width="1" />
+        <!-- Bottom Mounting Bracket Interface -->
+        <path d="M -15,54 L 15,54 L 10,66 L -10,66 Z" fill="url(#scope-metal-dark)" stroke="#090d14" stroke-width="1" />
+
+        <!-- Scope Outer Ring (Casing) -->
+        <circle cx="0" cy="0" r="56" fill="url(#scope-metal-dark)" stroke="#020617" stroke-width="1.5" />
+        <!-- Scope Bezel Inner Highlight -->
+        <circle cx="0" cy="0" r="52" fill="none" stroke="url(#scope-metal-light)" stroke-width="2.5" />
+        <circle cx="0" cy="0" r="49" fill="url(#scope-metal-dark)" />
+
+        <!-- Lens Glass -->
+        <circle cx="0" cy="0" r="47" fill="url(#lens-grad)" />
+        <circle cx="0" cy="0" r="47" fill="none" stroke="#00FF87" stroke-width="1" opacity="0.15" />
+
+        <!-- HUD Reticle / Crosshairs (Green) -->
+        <!-- Center circle bracket -->
+        <circle cx="0" cy="0" r="22" fill="none" stroke="#00ff66" stroke-width="0.75" stroke-dasharray="10, 7.27" opacity="0.8" transform="rotate(45)" class="reticle-lines" />
+        
+        <!-- Crosshair lines -->
+        <!-- Horizontal -->
+        <line x1="-42" y1="0" x2="-8" y2="0" stroke="#00ff66" stroke-width="1.5" class="reticle-lines" />
+        <line x1="8" y1="0" x2="42" y2="0" stroke="#00ff66" stroke-width="1.5" class="reticle-lines" />
+        <!-- Vertical -->
+        <line x1="0" y1="-42" x2="0" y2="-8" stroke="#00ff66" stroke-width="1.5" class="reticle-lines" />
+        <line x1="0" y1="8" x2="0" y2="42" stroke="#00ff66" stroke-width="1.5" class="reticle-lines" />
+
+        <!-- Mil-Dots / Ticks -->
+        <g class="reticle-dots">
+          <!-- Horizontal dots -->
+          <circle cx="-30" cy="0" r="1.5" />
+          <circle cx="-18" cy="0" r="1.5" />
+          <circle cx="18" cy="0" r="1.5" />
+          <circle cx="30" cy="0" r="1.5" />
+          <!-- Vertical dots -->
+          <circle cx="0" cy="-30" r="1.5" />
+          <circle cx="0" cy="-18" r="1.5" />
+          <circle cx="0" cy="18" r="1.5" />
+          <circle cx="0" cy="30" r="1.5" />
+        </g>
+
+        <!-- Red Dot illuminated reticle (with pulsing glow) -->
+        <circle cx="0" cy="0" r="10" fill="url(#red-glow)" class="reticle-glow" filter="url(#glow-red)" />
+        <circle cx="0" cy="0" r="2.5" fill="#ff3333" />
+        <circle cx="-0.8" cy="-0.8" r="0.8" fill="#ffffff" opacity="0.9" />
+
+        <!-- Glass Reflections (Glare) -->
+        <!-- Top Left Curve Glare -->
+        <path d="M -35,-22 A 42,42 0 0,1 22,-35 A 44,44 0 0,0 -35,-22 Z" fill="#ffffff" opacity="0.12" />
+        <!-- Bottom Right Curve Glare -->
+        <path d="M 35,22 A 42,42 0 0,1 -22,35 A 44,44 0 0,0 35,22 Z" fill="#ffffff" opacity="0.06" />
+        <!-- High reflection spot -->
+        <ellipse cx="-20" cy="-20" rx="3" ry="1.5" transform="rotate(-40 -20 -20)" fill="#ffffff" opacity="0.15" />
+      </g>
+
+      <!-- P -->
+      <path transform="translate(586, 75)" d="M 0,100 L 0,0 L 50,0 C 68,0 80,12 80,32 C 80,52 68,64 50,64 L 20,64 L 20,100 Z M 20,46 L 48,46 C 56,46 62,41 62,32 C 62,23 56,18 48,18 L 20,18 Z" />
+      <!-- E -->
+      <path transform="translate(681, 75)" d="M 0,0 L 70,0 L 70,18 L 20,18 L 20,41 L 65,41 L 65,59 L 20,59 L 20,82 L 72,82 L 72,100 L 0,100 Z" />
+    </g>
+  </g>
+</svg>
