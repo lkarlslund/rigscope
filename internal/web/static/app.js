@@ -54,6 +54,8 @@ let catalog = { metrics: [], defaults: [] };
 let layout = { version: 1, time_range: '15m', order: [] };
 let charts = new Map();
 let graphData = new Map();
+let graphRanges = new Map();
+let graphHistoryLoads = new Map();
 let lightboxChart = null;
 let lightboxGraph = null;
 let liveCounters = new Map();
@@ -574,7 +576,7 @@ function makeChart(graph, canvas, options = {}) {
         legend: { display: showLegend, labels: { boxWidth: 10, boxHeight: 10 } },
         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatValue(ctx.parsed.y, axisSymbol(graph, ctx.dataset.yAxisID))}` } },
         zoom: {
-          pan: { enabled: true, mode: 'x' },
+          pan: { enabled: true, mode: 'x', onPanComplete: ({ chart }) => ensureGraphHistoryForViewport(graph, chart) },
           zoom: { wheel: { enabled: true, modifierKey: 'ctrl' }, pinch: { enabled: true }, mode: 'x' },
         },
       },
@@ -706,12 +708,69 @@ function drawMissingDataBand(ctx, x, y, width, height) {
 async function loadGraphHistory(graph) {
   const end = Date.now();
   const start = end - timeRangeMs();
+  const res = await queryGraphRange(graph, start, end);
+  graphData.set(graph.id, res.series || []);
+  graphRanges.set(graph.id, { start: res.start || start, end: res.end || end });
+  applyGraphData(graph);
+}
+
+async function queryGraphRange(graph, start, end) {
+  start = Math.floor(start);
+  end = Math.floor(end);
   const res = await api('/api/query/batch', {
     method: 'POST',
     body: JSON.stringify({ start, end, max_points: 900, series: graph.series || [] }),
   });
-  graphData.set(graph.id, res.series || []);
-  applyGraphData(graph);
+  return res;
+}
+
+async function ensureGraphHistoryForViewport(graph, chart) {
+  const x = chart.scales.x;
+  if (!x || !Number.isFinite(x.min) || !Number.isFinite(x.max)) return;
+  const range = graphRanges.get(graph.id);
+  if (!range) return;
+  const visibleSpan = Math.max(1, x.max - x.min);
+  const margin = Math.min(visibleSpan * 0.25, timeRangeMs() * 0.5);
+  const wantedStart = x.min - margin;
+  if (wantedStart >= range.start) return;
+
+  const key = `${graph.id}:${Math.floor(wantedStart)}:${Math.floor(range.start)}`;
+  if (graphHistoryLoads.has(key)) return graphHistoryLoads.get(key);
+  const load = (async () => {
+    const res = await queryGraphRange(graph, wantedStart, range.start);
+    mergeGraphData(graph, res.series || []);
+    graphRanges.set(graph.id, { start: Math.min(res.start || wantedStart, range.start), end: range.end });
+    applyGraphData(graph);
+  })().finally(() => graphHistoryLoads.delete(key));
+  graphHistoryLoads.set(key, load);
+  return load;
+}
+
+function mergeGraphData(graph, olderSeries) {
+  const current = graphData.get(graph.id) || [];
+  const byID = new Map(current.map(item => [item.id, item]));
+  for (const older of olderSeries) {
+    const existing = byID.get(older.id);
+    if (!existing) {
+      byID.set(older.id, older);
+      continue;
+    }
+    existing.points = mergePoints(older.points || [], existing.points || []);
+  }
+  graphData.set(graph.id, (graph.series || []).map(item => byID.get(item.id)).filter(Boolean));
+}
+
+function mergePoints(a, b) {
+  const seen = new Set();
+  const out = [];
+  for (const point of [...a, ...b]) {
+    const key = point[0];
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(point);
+  }
+  out.sort((left, right) => left[0] - right[0]);
+  return out;
 }
 
 async function refreshAllGraphs() {
@@ -781,7 +840,9 @@ function applyLivePointsToCharts(graph, targets, points, now, liveRates) {
     updates.push({ index, value: normalizeSeriesValue(transformed.value, item, graph) });
   });
   if (!updates.length) return;
-  const cutoff = now - timeRangeMs();
+  const loadedRange = graphRanges.get(graph.id);
+  const cutoff = Math.min(now - timeRangeMs(), loadedRange?.start || now - timeRangeMs());
+  let anyChanged = false;
   for (const chart of targets) {
     let changed = false;
     for (const update of updates) {
@@ -796,7 +857,16 @@ function applyLivePointsToCharts(graph, targets, points, now, liveRates) {
       while (data.length && data[0].x < cutoff) data.shift();
       changed = true;
     }
-    if (changed) chart.update('none');
+    if (changed) {
+      anyChanged = true;
+      chart.update('none');
+    }
+  }
+  if (anyChanged) {
+    graphRanges.set(graph.id, {
+      start: loadedRange?.start || cutoff,
+      end: Math.max(loadedRange?.end || now, now),
+    });
   }
 }
 
