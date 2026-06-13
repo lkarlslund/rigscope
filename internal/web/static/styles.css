@@ -290,6 +290,35 @@ button:hover { border-color: #4c5f75; background: #202c3e; }
   display: none !important;
 }
 
+.collector-alert {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #2f1b1d;
+  color: #fecdd3;
+  border-bottom: 1px solid rgba(244, 63, 94, 0.4);
+  font-size: 13px;
+}
+
+.collector-alert[hidden] {
+  display: none !important;
+}
+
+.collector-alert > span:first-child {
+  font-weight: 700;
+  color: #fb7185;
+  white-space: nowrap;
+}
+
+.collector-alert-details {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 main {
   max-width: 1800px;
   margin: 0 auto;

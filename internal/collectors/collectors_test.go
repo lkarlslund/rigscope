@@ -46,7 +46,7 @@ func TestMetricDefaultSymbols(t *testing.T) {
 func TestSamplerTimesOutOneCollectorWithoutBlockingOthers(t *testing.T) {
 	blocked := &blockingCollector{name: "blocked", started: make(chan struct{}), release: make(chan struct{})}
 	fast := staticCollector{name: "fast"}
-	sampler := Sampler{Timeout: 20 * time.Millisecond}
+	sampler := Sampler{Timeout: 20 * time.Millisecond, StaleAfter: time.Hour}
 
 	sample := sampler.SampleAll(context.Background(), []Collector{blocked, fast})
 	records := sample["collectors"].([]map[string]any)
@@ -79,6 +79,60 @@ func TestSamplerTimesOutOneCollectorWithoutBlockingOthers(t *testing.T) {
 	}
 
 	close(blocked.release)
+}
+
+func TestSamplerRetriesStaleInFlightCollector(t *testing.T) {
+	blocked := &blockingCollector{name: "blocked", started: make(chan struct{}), release: make(chan struct{})}
+	sampler := Sampler{Timeout: 10 * time.Millisecond, StaleAfter: 15 * time.Millisecond}
+
+	_ = sampler.SampleAll(context.Background(), []Collector{blocked})
+	time.Sleep(20 * time.Millisecond)
+	sample := sampler.SampleAll(context.Background(), []Collector{staticCollector{name: "blocked"}})
+	records := sample["collectors"].([]map[string]any)
+	if records[0]["collector"] != "blocked" || records[0]["ok"] != true {
+		t.Fatalf("stale retry record = %#v, want successful replacement sample", records[0])
+	}
+
+	close(blocked.release)
+}
+
+func TestThermalHwmonMetricsIncludesGenericPowerSensors(t *testing.T) {
+	root := t.TempDir()
+	nvme := filepath.Join(root, "hwmon0")
+	amdgpu := filepath.Join(root, "hwmon1")
+	if err := os.MkdirAll(nvme, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(amdgpu, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(nvme, "name"), "nvme\n")
+	writeFile(t, filepath.Join(nvme, "power1_input"), "2500000\n")
+	writeFile(t, filepath.Join(nvme, "power1_label"), "controller\n")
+	writeFile(t, filepath.Join(amdgpu, "name"), "amdgpu\n")
+	writeFile(t, filepath.Join(amdgpu, "power1_input"), "50000000\n")
+
+	metrics, err := (Thermal{HwmonRoot: root}).hwmonMetrics()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var found bool
+	for _, metric := range metrics {
+		if metric["name"] != "hwmon_power_w" {
+			continue
+		}
+		labels := metric["labels"].(map[string]string)
+		if labels["chip"] == "amdgpu" {
+			t.Fatal("amdgpu hwmon power should be left to the DRM collector")
+		}
+		if labels["chip"] == "nvme" && labels["sensor"] == "controller" && metric["value"] == 2.5 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing nvme hwmon power metric: %#v", metrics)
+	}
 }
 
 type staticCollector struct {

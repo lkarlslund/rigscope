@@ -119,14 +119,17 @@ func SampleAll(ctx context.Context, cs []Collector) map[string]any {
 }
 
 type Sampler struct {
-	Timeout time.Duration
+	Timeout    time.Duration
+	StaleAfter time.Duration
 
 	mu     sync.Mutex
 	states map[string]*collectorState
 }
 
 type collectorState struct {
-	inFlight bool
+	inFlight   bool
+	startedAt  time.Time
+	generation uint64
 }
 
 type collectorResult struct {
@@ -143,22 +146,27 @@ func (s *Sampler) SampleAll(ctx context.Context, cs []Collector) map[string]any 
 	records := make([]map[string]any, len(cs))
 	results := make(chan collectorResult, len(cs))
 	pending := 0
-	for i, c := range cs {
-		key := collectorKey(i, c)
-		if !s.tryStart(key) {
-			records[i] = collectorError(c.Name(), "previous sample still running")
-			continue
-		}
-		pending++
-		go s.sampleCollector(ctx, key, i, c, results)
-	}
-
 	timeout := s.Timeout
 	if timeout <= 0 {
 		timeout = time.Second
 	}
+	staleAfter := s.StaleAfter
+	if staleAfter <= 0 {
+		staleAfter = maxDuration(30*time.Second, timeout*10)
+	}
+	now := time.Now()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
+	for i, c := range cs {
+		key := collectorKey(i, c)
+		generation, ok := s.tryStart(key, now, staleAfter)
+		if !ok {
+			records[i] = collectorError(c.Name(), "previous sample still running")
+			continue
+		}
+		pending++
+		go s.sampleCollector(ctx, key, generation, i, c, results)
+	}
 	for pending > 0 {
 		select {
 		case result := <-results:
@@ -184,8 +192,8 @@ func (s *Sampler) SampleAll(ctx context.Context, cs []Collector) map[string]any 
 	return sample
 }
 
-func (s *Sampler) sampleCollector(ctx context.Context, key string, index int, c Collector, results chan<- collectorResult) {
-	defer s.finish(key)
+func (s *Sampler) sampleCollector(ctx context.Context, key string, generation uint64, index int, c Collector, results chan<- collectorResult) {
+	defer s.finish(key, generation)
 	record, err := c.Sample(ctx)
 	if err != nil {
 		record = collectorError(c.Name(), err.Error())
@@ -199,7 +207,7 @@ func (s *Sampler) sampleCollector(ctx context.Context, key string, index int, c 
 	}
 }
 
-func (s *Sampler) tryStart(key string) bool {
+func (s *Sampler) tryStart(key string, now time.Time, staleAfter time.Duration) (uint64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.states == nil {
@@ -210,19 +218,28 @@ func (s *Sampler) tryStart(key string) bool {
 		state = &collectorState{}
 		s.states[key] = state
 	}
-	if state.inFlight {
-		return false
+	if state.inFlight && now.Sub(state.startedAt) <= staleAfter {
+		return 0, false
 	}
 	state.inFlight = true
-	return true
+	state.startedAt = now
+	state.generation++
+	return state.generation, true
 }
 
-func (s *Sampler) finish(key string) {
+func (s *Sampler) finish(key string, generation uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if state := s.states[key]; state != nil {
+	if state := s.states[key]; state != nil && state.generation == generation {
 		state.inFlight = false
 	}
+}
+
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func collectorKey(index int, c Collector) string {

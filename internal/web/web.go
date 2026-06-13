@@ -36,6 +36,8 @@ type Server struct {
 	assetsHash string
 }
 
+const maxHistoricalPointSpacing = 5 * time.Minute
+
 func (s *Server) Handler() http.Handler {
 	if s.Hub == nil {
 		s.Hub = NewHub()
@@ -91,14 +93,17 @@ func (s *Server) listenAndServe(ctx context.Context, addr string) error {
 	}
 }
 
-func (s *Server) PublishSample(timestamp time.Time, points []series.Point) {
+func (s *Server) PublishSample(timestamp time.Time, points []series.Point, collectorErrors []map[string]string) {
 	if s.Hub == nil {
 		return
 	}
 	s.Hub.Broadcast(WSEvent{
 		Type: "sample",
 		Time: timestamp.UnixMilli(),
-		Data: map[string]any{"points": points},
+		Data: map[string]any{
+			"points":           points,
+			"collector_errors": collectorErrors,
+		},
 	})
 }
 
@@ -227,7 +232,7 @@ func (s *Server) queryBatch(w http.ResponseWriter, r *http.Request) {
 		out.Series = append(out.Series, BatchSeriesResponse{
 			ID:     item.ID,
 			Metric: item.Metric,
-			Points: limitPoints(points, req.MaxPoints),
+			Points: limitPoints(points, maxPointsForRange(start, end, req.MaxPoints)),
 		})
 	}
 	writeJSON(w, out)
@@ -426,6 +431,20 @@ func ratePoints(points []tstorage.DataPoint) [][2]float64 {
 		prev = point
 	}
 	return out
+}
+
+func maxPointsForRange(start, end time.Time, requested int) int {
+	if requested <= 0 {
+		return requested
+	}
+	if !end.After(start) {
+		return requested
+	}
+	pointsForFiveMinuteSpacing := int(end.Sub(start)/maxHistoricalPointSpacing) + 1
+	if end.Sub(start)%maxHistoricalPointSpacing != 0 {
+		pointsForFiveMinuteSpacing++
+	}
+	return max(requested, pointsForFiveMinuteSpacing)
 }
 
 func limitPoints(points [][2]float64, maxPoints int) [][2]float64 {

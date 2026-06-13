@@ -7,6 +7,7 @@ const rangeButtons = document.getElementById('rangeButtons');
 const pauseButton = document.getElementById('pauseButton');
 const updateBanner = document.getElementById('updateBanner');
 const reloadButton = document.getElementById('reloadButton');
+const collectorAlert = document.getElementById('collectorAlert');
 const addGraphButton = document.getElementById('addGraphButton');
 const graphDrawerButton = document.getElementById('graphDrawerButton');
 const graphDrawer = document.getElementById('graphDrawer');
@@ -49,6 +50,7 @@ const ranges = [
 ];
 
 const gapThresholdMs = 10_000;
+const maxHistoricalPointSpacingMs = 300_000;
 
 let catalog = { metrics: [], defaults: [] };
 let layout = { version: 1, time_range: '15m', order: [] };
@@ -350,6 +352,25 @@ function renderSummary(points = []) {
     tile.innerHTML = `<span class="subtle">${title}</span><b>${value || (point ? formatValue(point.value, point.symbol || point.unit) : 'n/a')}</b>`;
     summaryGrid.append(tile);
   }
+}
+
+function renderCollectorAlert(errors = []) {
+  const active = (errors || []).filter(item => item?.collector && item?.error);
+  if (!active.length) {
+    collectorAlert.hidden = true;
+    collectorAlert.innerHTML = '';
+    return;
+  }
+  const shown = active.slice(0, 4);
+  const extra = active.length - shown.length;
+  const details = shown
+    .map(item => `<strong>${escapeHTML(item.collector)}</strong>: ${escapeHTML(item.error)}`)
+    .join(' · ');
+  collectorAlert.hidden = false;
+  collectorAlert.innerHTML = `
+    <span>${active.length === 1 ? 'Collector issue' : `${active.length} collector issues`}</span>
+    <span class="collector-alert-details">${details}${extra > 0 ? ` · +${extra} more` : ''}</span>
+  `;
 }
 
 function totalKnownPower(points) {
@@ -730,9 +751,13 @@ async function queryGraphRange(graph, start, end) {
   end = Math.floor(end);
   const res = await api('/api/query/batch', {
     method: 'POST',
-    body: JSON.stringify({ start, end, max_points: 900, series: graph.series || [] }),
+    body: JSON.stringify({ start, end, max_points: maxPointsForRange(start, end), series: graph.series || [] }),
   });
   return res;
+}
+
+function maxPointsForRange(start, end) {
+  return Math.max(900, Math.ceil(Math.max(0, end - start) / maxHistoricalPointSpacingMs) + 1);
 }
 
 async function ensureGraphHistoryForViewport(graph, chart) {
@@ -808,8 +833,9 @@ function applyGraphDataToChart(graph, chart) {
 function pointsWithGaps(points, item, graph) {
   const out = [];
   let previousX = null;
+  const threshold = gapThresholdForPoints(points);
   for (const [x, y] of points) {
-    if (previousX !== null && x - previousX > gapThresholdMs) {
+    if (previousX !== null && x - previousX > threshold) {
       out.push({ x: previousX + 1, y: null, missing: true });
       out.push({ x: x - 1, y: null, missing: true });
     }
@@ -817,6 +843,22 @@ function pointsWithGaps(points, item, graph) {
     previousX = x;
   }
   return out;
+}
+
+function gapThresholdForPoints(points) {
+  if (!Array.isArray(points) || points.length < 3) return gapThresholdMs;
+  const deltas = [];
+  let previousX = null;
+  for (const point of points) {
+    const x = point?.[0];
+    if (!Number.isFinite(x)) continue;
+    if (previousX !== null && x > previousX) deltas.push(x - previousX);
+    previousX = x;
+  }
+  if (!deltas.length) return gapThresholdMs;
+  deltas.sort((a, b) => a - b);
+  const median = deltas[Math.floor(deltas.length / 2)];
+  return Math.max(gapThresholdMs, median * 3);
 }
 
 function normalizeSeriesValue(value, item, graph) {
@@ -1214,6 +1256,7 @@ function connectWS() {
     }
     if (msg.type === 'sample') {
       const points = msg.data?.points || [];
+      renderCollectorAlert(msg.data?.collector_errors || []);
       if (points.length) lastPointTime = msg.time || Date.now();
       scheduleCatalogRefreshFromPoints(points);
       applyLivePoints(points, msg.time || Date.now());
