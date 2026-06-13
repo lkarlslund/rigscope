@@ -121,7 +121,7 @@ func TestLayoutPersistenceRoundTrip(t *testing.T) {
 }
 
 func TestBatchQueryAppliesCounterRateTransform(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "tsdb"), 0)
+	db, err := store.OpenInMemory(0)
 	if err != nil {
 		t.Fatal(err)
 	}

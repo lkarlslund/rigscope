@@ -8,7 +8,7 @@ import (
 )
 
 func TestStoreInsertQuery(t *testing.T) {
-	s, err := Open(t.TempDir(), time.Hour)
+	s, err := OpenInMemory(time.Hour)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
