@@ -163,6 +163,45 @@ func TestBatchQueryAppliesCounterRateTransform(t *testing.T) {
 	}
 }
 
+func TestMaxPointsForRangeKeepsFiveMinuteResolution(t *testing.T) {
+	start := time.Unix(100, 0)
+
+	tests := []struct {
+		name      string
+		duration  time.Duration
+		requested int
+		want      int
+	}{
+		{
+			name:      "honors larger request",
+			duration:  24 * time.Hour,
+			requested: 900,
+			want:      900,
+		},
+		{
+			name:      "raises long range to five minute spacing",
+			duration:  4 * 7 * 24 * time.Hour,
+			requested: 900,
+			want:      8065,
+		},
+		{
+			name:      "preserves unlimited request",
+			duration:  10 * time.Minute,
+			requested: 0,
+			want:      0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := maxPointsForRange(start, start.Add(tt.duration), tt.requested)
+			if got != tt.want {
+				t.Fatalf("maxPointsForRange() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDefaultPowerGraphIncludesWattMetricsAndExcludesLimits(t *testing.T) {
 	graphs := DefaultGraphs([]series.Metric{
 		{Name: "gpu_power_w", Unit: "watt", Symbol: "W", Kind: "power"},

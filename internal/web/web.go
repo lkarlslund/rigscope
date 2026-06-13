@@ -36,6 +36,8 @@ type Server struct {
 	assetsHash string
 }
 
+const maxHistoricalPointSpacing = 5 * time.Minute
+
 func (s *Server) Handler() http.Handler {
 	if s.Hub == nil {
 		s.Hub = NewHub()
@@ -230,7 +232,7 @@ func (s *Server) queryBatch(w http.ResponseWriter, r *http.Request) {
 		out.Series = append(out.Series, BatchSeriesResponse{
 			ID:     item.ID,
 			Metric: item.Metric,
-			Points: limitPoints(points, req.MaxPoints),
+			Points: limitPoints(points, maxPointsForRange(start, end, req.MaxPoints)),
 		})
 	}
 	writeJSON(w, out)
@@ -429,6 +431,20 @@ func ratePoints(points []tstorage.DataPoint) [][2]float64 {
 		prev = point
 	}
 	return out
+}
+
+func maxPointsForRange(start, end time.Time, requested int) int {
+	if requested <= 0 {
+		return requested
+	}
+	if !end.After(start) {
+		return requested
+	}
+	pointsForFiveMinuteSpacing := int(end.Sub(start)/maxHistoricalPointSpacing) + 1
+	if end.Sub(start)%maxHistoricalPointSpacing != 0 {
+		pointsForFiveMinuteSpacing++
+	}
+	return max(requested, pointsForFiveMinuteSpacing)
 }
 
 func limitPoints(points [][2]float64, maxPoints int) [][2]float64 {

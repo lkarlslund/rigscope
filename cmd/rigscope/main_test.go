@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -79,6 +80,21 @@ func TestRunCommandRequiresWorkload(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "missing workload command") {
 		t.Fatalf("Execute() error = %v, want missing workload command", err)
+	}
+}
+
+func TestServeRetentionDefaultsToUnlimited(t *testing.T) {
+	cmd := newRootCommand(io.Discard, io.Discard)
+	serveCmd, _, err := cmd.Find([]string{"serve"})
+	if err != nil {
+		t.Fatalf("Find serve command: %v", err)
+	}
+	flag := serveCmd.Flags().Lookup("retention")
+	if flag == nil {
+		t.Fatal("retention flag is missing")
+	}
+	if flag.DefValue != "0s" {
+		t.Fatalf("retention default = %q, want 0s", flag.DefValue)
 	}
 }
 

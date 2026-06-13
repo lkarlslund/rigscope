@@ -35,7 +35,7 @@ go run ./cmd/rigscope serve \
   --addr 127.0.0.1:7077 \
   --data-dir data \
   --interval 1s \
-  --retention 168h \
+  --retention 0 \
   --log-level info
 ```
 
@@ -80,7 +80,7 @@ go run ./cmd/rigscope serve --no-rocm --no-zenpower
 
 ## Storage
 
-Samples are stored under `data/tsdb` by default using `github.com/nakabonne/tstorage`, an embedded Go time-series database. The dependency is Apache-2.0 licensed, which is permissive and compatible with an MIT-licensed application; keep its notice/license text when distributing binaries or bundled source.
+Samples are stored under `data/tsdb` by default using `github.com/nakabonne/tstorage`, an embedded Go time-series database. History is unlimited by default; set `--retention` to a duration such as `168h` if you want pruning. The dependency is Apache-2.0 licensed, which is permissive and compatible with an MIT-licensed application; keep its notice/license text when distributing binaries or bundled source.
 
 Current metric examples:
 

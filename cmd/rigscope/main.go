@@ -59,7 +59,7 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 		addr:      "127.0.0.1:7077",
 		dataDir:   "data",
 		interval:  time.Second,
-		retention: 7 * 24 * time.Hour,
+		retention: 0,
 		logLevel:  "info",
 	}
 	serveCmd := &cobra.Command{
