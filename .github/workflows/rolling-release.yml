@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: Build rolling Linux x64 release
+    name: Build rolling release
     runs-on: ubuntu-latest
 
     steps:
@@ -65,7 +65,7 @@ jobs:
           {
             echo "## rigscope ${tag}"
             echo
-            echo "Linux x64 rolling release built from ${short_sha}."
+            echo "Linux x64 and Windows x64 rolling release built from ${short_sha}."
             echo
             echo "### Changelog"
             echo
@@ -90,15 +90,32 @@ jobs:
           CGO_ENABLED: "1"
         run: |
           set -euo pipefail
-          mkdir -p dist/rigscope-linux-amd64
+          mkdir -p dist
           go build \
             -trimpath \
             -ldflags "-s -w -X github.com/lkarlslund/rigscope/internal/buildinfo.Version=${TAG} -X github.com/lkarlslund/rigscope/internal/buildinfo.Commit=${SHORT_SHA} -X github.com/lkarlslund/rigscope/internal/buildinfo.BuiltAt=${BUILT_AT}" \
-            -o dist/rigscope-linux-amd64/rigscope \
+            -o "dist/rigscope-${TAG}-linux-amd64" \
             ./cmd/rigscope
-          cp README.md LICENSE dist/rigscope-linux-amd64/
-          tar -C dist -czf "dist/rigscope-${TAG}-linux-amd64.tar.gz" rigscope-linux-amd64
-          sha256sum "dist/rigscope-${TAG}-linux-amd64.tar.gz" > "dist/rigscope-${TAG}-linux-amd64.tar.gz.sha256"
+          sha256sum "dist/rigscope-${TAG}-linux-amd64" > "dist/rigscope-${TAG}-linux-amd64.sha256"
+
+      - name: Build Windows x64 artifact
+        if: steps.meta.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+          BUILT_AT: ${{ steps.meta.outputs.built_at }}
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          go build \
+            -trimpath \
+            -ldflags "-s -w -X github.com/lkarlslund/rigscope/internal/buildinfo.Version=${TAG} -X github.com/lkarlslund/rigscope/internal/buildinfo.Commit=${SHORT_SHA} -X github.com/lkarlslund/rigscope/internal/buildinfo.BuiltAt=${BUILT_AT}" \
+            -o "dist/rigscope-${TAG}-windows-amd64.exe" \
+            ./cmd/rigscope
+          sha256sum "dist/rigscope-${TAG}-windows-amd64.exe" > "dist/rigscope-${TAG}-windows-amd64.exe.sha256"
 
       - name: Publish GitHub release
         if: steps.meta.outputs.changed == 'true'
@@ -111,5 +128,7 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$TAG" \
             --notes-file release-notes.md \
-            "dist/rigscope-${TAG}-linux-amd64.tar.gz" \
-            "dist/rigscope-${TAG}-linux-amd64.tar.gz.sha256"
+            "dist/rigscope-${TAG}-linux-amd64" \
+            "dist/rigscope-${TAG}-linux-amd64.sha256" \
+            "dist/rigscope-${TAG}-windows-amd64.exe" \
+            "dist/rigscope-${TAG}-windows-amd64.exe.sha256"
