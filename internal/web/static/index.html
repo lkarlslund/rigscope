@@ -10,10 +10,9 @@
 <body>
   <header class="topbar">
     <div class="brand-block">
-      <a class="brand" href="/" aria-label="RIG Scope home">
+      <a class="brand" id="brandLink" href="/" aria-label="RIG Scope home" title="loading daemon">
         <img src="/static/logo.svg?v={{ASSETS_HASH}}" alt="RIG Scope">
       </a>
-      <div class="subtle" id="buildText">loading daemon</div>
     </div>
     <div class="summary-grid" id="summaryGrid"></div>
     <div class="action-row">
@@ -22,9 +21,9 @@
         <div class="range" id="rangeButtons"></div>
       </div>
       <div class="button-group" role="group" aria-label="Graph actions">
-        <button class="icon-button" id="graphDrawerButton" title="Show unused graphs">Graphs</button>
-        <button class="icon-button" id="pauseButton" title="Pause live graph updates">Pause</button>
-        <button class="primary-button" id="addGraphButton">Add graph</button>
+        <button class="icon-button graph-icon" id="graphDrawerButton" title="Show unused graphs" aria-label="Show unused graphs"></button>
+        <button class="icon-button pause-icon" id="pauseButton" title="Pause live graph updates" aria-label="Pause live graph updates"></button>
+        <button class="icon-button primary-button add-icon" id="addGraphButton" title="Add graph" aria-label="Add graph"></button>
       </div>
     </div>
   </header>

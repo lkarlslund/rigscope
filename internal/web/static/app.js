@@ -2,7 +2,7 @@ const assetsHash = document.querySelector('meta[name="rigscope-assets-hash"]').c
 const dashboard = document.getElementById('dashboard');
 const summaryGrid = document.getElementById('summaryGrid');
 const socketState = document.getElementById('socketState');
-const buildText = document.getElementById('buildText');
+const brandLink = document.getElementById('brandLink');
 const rangeButtons = document.getElementById('rangeButtons');
 const pauseButton = document.getElementById('pauseButton');
 const updateBanner = document.getElementById('updateBanner');
@@ -423,7 +423,9 @@ function renderDashboard() {
 
 function renderGraphDrawer() {
   const unused = unusedGraphs();
-  graphDrawerButton.textContent = `Graphs${unused.length ? ` (${unused.length})` : ''}`;
+  graphDrawerButton.dataset.count = String(unused.length);
+  graphDrawerButton.title = unused.length ? `Show unused graphs (${unused.length})` : 'Show unused graphs';
+  graphDrawerButton.setAttribute('aria-label', graphDrawerButton.title);
   graphDrawerList.innerHTML = '';
   if (unused.length === 0) {
     graphDrawerList.innerHTML = '<div class="empty">No unused graphs.</div>';
@@ -1288,7 +1290,9 @@ function escapeHTML(value) {
 
 async function init() {
   const build = await api('/api/build');
-  buildText.textContent = `${build.version} · ${build.assets_hash.slice(0, 12)} · pid ${build.pid}`;
+  const buildLabel = `${build.version} · ${build.assets_hash.slice(0, 12)} · pid ${build.pid}`;
+  brandLink.title = buildLabel;
+  brandLink.setAttribute('aria-label', `RIG Scope home. ${buildLabel}`);
   catalog = await api('/api/catalog');
   layout = await api('/api/graphs/layout');
   renderRangeButtons();
@@ -1299,7 +1303,10 @@ async function init() {
 
 pauseButton.onclick = () => {
   paused = !paused;
-  pauseButton.textContent = paused ? 'Resume' : 'Pause';
+  pauseButton.classList.toggle('is-paused', paused);
+  const label = paused ? 'Resume live graph updates' : 'Pause live graph updates';
+  pauseButton.title = label;
+  pauseButton.setAttribute('aria-label', label);
 };
 reloadButton.onclick = () => location.reload();
 graphDrawerButton.onclick = () => {
