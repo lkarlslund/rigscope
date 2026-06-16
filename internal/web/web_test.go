@@ -202,6 +202,40 @@ func TestMaxPointsForRangeKeepsFiveMinuteResolution(t *testing.T) {
 	}
 }
 
+func TestQueryFiltersImplausibleZenpowerPackagePower(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "tsdb"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	metric := series.Metric{
+		Name:   "cpu_package_power_w",
+		Labels: map[string]string{"collector": "zenpower"},
+		Unit:   "watt",
+		Symbol: "W",
+		Kind:   "power",
+	}
+	start := time.Unix(100, 0)
+	if err := db.Insert(start, []series.Point{{Metric: metric, Value: 42}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Insert(start.Add(time.Second), []series.Point{{Metric: metric, Value: 64424481.72}}); err != nil {
+		t.Fatal(err)
+	}
+
+	points, err := (&Server{Store: db}).queryMetric(metric, start.Add(-time.Second), start.Add(2*time.Second), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 1 {
+		t.Fatalf("len(points) = %d, want 1: %#v", len(points), points)
+	}
+	if got, want := points[0][1], 42.0; got != want {
+		t.Fatalf("point value = %v, want %v", got, want)
+	}
+}
+
 func TestDefaultPowerGraphIncludesWattMetricsAndExcludesLimits(t *testing.T) {
 	graphs := DefaultGraphs([]series.Metric{
 		{Name: "gpu_power_w", Unit: "watt", Symbol: "W", Kind: "power"},
@@ -457,7 +491,7 @@ func TestDefaultDiskGraphExcludesPartitionDevices(t *testing.T) {
 	}
 }
 
-func TestDefaultGraphsIncludeKulaStyleSystemPresets(t *testing.T) {
+func TestDefaultGraphsIncludeSystemPresets(t *testing.T) {
 	graphs := DefaultGraphs([]series.Metric{
 		{Name: "sockets_used", Unit: "count", Symbol: "count", Kind: "socket"},
 		{Name: "tcp_connections_established", Unit: "count", Symbol: "count", Kind: "connection"},

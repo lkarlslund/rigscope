@@ -53,6 +53,32 @@ func TestPreferLowOverheadCollectorsKeepsROCMWithoutAMDFromDRM(t *testing.T) {
 	}
 }
 
+func TestZenpowerRejectsImplausiblePackagePower(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "power1_input")
+	writeFile(t, path, "64424481720000\n")
+
+	_, err := (Zenpower{Path: path}).Sample(context.Background())
+	if err == nil {
+		t.Fatal("Sample() error = nil, want implausible power error")
+	}
+	if !strings.Contains(err.Error(), "implausible zenpower package power") {
+		t.Fatalf("Sample() error = %v, want implausible power error", err)
+	}
+}
+
+func TestZenpowerSamplesPackagePower(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "power1_input")
+	writeFile(t, path, "26206968\n")
+
+	sample, err := (Zenpower{Path: path}).Sample(context.Background())
+	if err != nil {
+		t.Fatalf("Sample() error = %v", err)
+	}
+	if got, want := sample["cpu_package_power_w"], 26.206968; got != want {
+		t.Fatalf("cpu_package_power_w = %v, want %v", got, want)
+	}
+}
+
 func TestThermalHwmonMetricsIncludesGenericPowerSensors(t *testing.T) {
 	root := t.TempDir()
 	nvme := filepath.Join(root, "hwmon0")

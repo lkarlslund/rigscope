@@ -63,6 +63,11 @@ let lightboxGraph = null;
 let liveCounters = new Map();
 let catalogRefreshTimer = null;
 let catalogRefreshInFlight = false;
+let summaryEnergyWh = null;
+let summaryEnergyTimer = null;
+let summaryEnergyInFlight = false;
+let summaryEnergyRequested = false;
+let latestSummaryPoints = [];
 let paused = false;
 let dirtyEditor = false;
 let editingGraph = null;
@@ -332,17 +337,21 @@ function renderRangeButtons() {
     layout.time_range = select.value;
     await saveLayout();
     await refreshAllGraphs();
+    scheduleSummaryEnergyRefresh(0);
   };
   rangeButtons.append(label, select);
 }
 
-function renderSummary(points = []) {
+function renderSummary(points = latestSummaryPoints) {
+  latestSummaryPoints = points || [];
+  points = latestSummaryPoints;
   const totalPower = totalKnownPower(points);
   const wanted = [
     ['Total Power', () => null, totalPower !== null ? formatValue(totalPower, 'W') : 'n/a'],
     ['GPU Load', p => p.name === 'gpu_util_pct'],
     ['NPU', p => p.name.startsWith('npu_')],
     ['Thermals', p => p.kind === 'temperature' || p.name.includes('temp')],
+    ['Energy', () => null, summaryEnergyWh !== null ? formatEnergy(summaryEnergyWh) : 'n/a'],
   ];
   summaryGrid.innerHTML = '';
   for (const [title, pick, value] of wanted) {
@@ -385,12 +394,100 @@ function totalKnownPower(points) {
 }
 
 function isUsagePowerPoint(point) {
-  const name = String(point.name || '').toLowerCase();
-  const labels = point.labels || {};
-  if (point.kind !== 'power' && point.unit !== 'watt' && point.symbol !== 'W') return false;
+  if (!isUsagePowerMetric(point)) return false;
+  return Number.isFinite(point.value);
+}
+
+function isUsagePowerMetric(metric) {
+  const name = String(metric.name || '').toLowerCase();
+  const labels = metric.labels || {};
+  if (metric.kind !== 'power' && metric.unit !== 'watt' && metric.symbol !== 'W') return false;
   if (name.includes('limit') || name.includes('cap')) return false;
   if (labels.collector === 'power_supply') return false;
   return true;
+}
+
+function formatEnergy(wh) {
+  if (!Number.isFinite(wh)) return 'n/a';
+  const abs = Math.abs(wh);
+  if (abs >= 1_000_000) return `${(wh / 1_000_000).toFixed(2)} MWh`;
+  if (abs >= 1000) return `${(wh / 1000).toFixed(2)} kWh`;
+  if (abs >= 100) return `${wh.toFixed(0)} Wh`;
+  if (abs >= 10) return `${wh.toFixed(1)} Wh`;
+  return `${wh.toFixed(2)} Wh`;
+}
+
+function scheduleSummaryEnergyRefresh(delay = 0) {
+  if (summaryEnergyTimer) clearTimeout(summaryEnergyTimer);
+  summaryEnergyTimer = setTimeout(refreshSummaryEnergy, delay);
+}
+
+async function refreshSummaryEnergy() {
+  summaryEnergyTimer = null;
+  if (summaryEnergyInFlight) {
+    summaryEnergyRequested = true;
+    return;
+  }
+  const metrics = uniqueUsagePowerMetrics();
+  if (!metrics.length) {
+    summaryEnergyWh = null;
+    renderSummary(latestSummaryPoints);
+    return;
+  }
+  summaryEnergyInFlight = true;
+  try {
+    const end = Date.now();
+    const start = end - timeRangeMs();
+    const res = await api('/api/query/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        start,
+        end,
+        max_points: maxPointsForRange(start, end),
+        series: metrics.map(metric => ({ id: metricKey(metric), metric })),
+      }),
+    });
+    summaryEnergyWh = (res.series || [])
+      .map(item => integrateWattHours(item.points || []))
+      .reduce((sum, value) => sum + value, 0);
+    renderSummary(latestSummaryPoints);
+  } catch (err) {
+    console.warn('summary energy refresh failed', err);
+  } finally {
+    summaryEnergyInFlight = false;
+    if (summaryEnergyRequested) {
+      summaryEnergyRequested = false;
+      scheduleSummaryEnergyRefresh(250);
+    }
+  }
+}
+
+function uniqueUsagePowerMetrics() {
+  const out = [];
+  const seen = new Set();
+  for (const metric of catalog.metrics || []) {
+    if (!isUsagePowerMetric(metric)) continue;
+    const key = metricKey(metric);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(metric);
+  }
+  return out;
+}
+
+function integrateWattHours(points) {
+  let wh = 0;
+  let previous = null;
+  for (const point of points || []) {
+    const x = point?.[0];
+    const y = point?.[1];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (previous && x > previous.x) {
+      wh += ((previous.y + y) / 2) * ((x - previous.x) / 3_600_000);
+    }
+    previous = { x, y };
+  }
+  return wh;
 }
 
 function renderDashboard() {
@@ -873,6 +970,7 @@ function normalizeSeriesValue(value, item, graph) {
 
 function applyLivePoints(points, timestamp = Date.now()) {
   renderSummary(points);
+  if (!summaryEnergyTimer && !summaryEnergyInFlight) scheduleSummaryEnergyRefresh(60_000);
   const now = timestamp;
   const liveRates = new Map();
   for (const graph of allGraphs()) {
@@ -990,7 +1088,10 @@ async function refreshCatalogFromServer() {
     const next = await api('/api/catalog');
     catalog = next;
     const changed = (catalog.defaults || []).some(graph => previousDefaults.get(graph.id) !== (graph.series?.length || 0));
-    if (changed) await refreshAllGraphs();
+    if (changed) {
+      await refreshAllGraphs();
+      scheduleSummaryEnergyRefresh(0);
+    }
   } catch (err) {
     console.warn('catalog refresh failed', err);
   } finally {
@@ -1297,6 +1398,7 @@ async function init() {
   layout = await api('/api/graphs/layout');
   renderRangeButtons();
   renderSummary();
+  scheduleSummaryEnergyRefresh(0);
   renderDashboard();
   connectWS();
 }

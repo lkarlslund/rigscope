@@ -5,11 +5,14 @@ package collectors
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 )
+
+const maxZenpowerPackageWatts = 1000
 
 func init() {
 	Register(Registration{
@@ -42,8 +45,12 @@ func (z Zenpower) Sample(context.Context) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	watts := float64(microwatts) / 1_000_000
+	if watts < 0 || watts > maxZenpowerPackageWatts {
+		return nil, fmt.Errorf("implausible zenpower package power %.3f W from %s", watts, z.Path)
+	}
 	return map[string]any{
-		"cpu_package_power_w": float64(microwatts) / 1_000_000,
+		"cpu_package_power_w": watts,
 		"path":                z.Path,
 	}, nil
 }

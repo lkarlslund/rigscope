@@ -353,7 +353,7 @@ h1 { font-size: clamp(28px, 5vw, 54px); line-height: 1; max-width: 760px; }
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: stretch;
   gap: 8px;
   min-width: 0;

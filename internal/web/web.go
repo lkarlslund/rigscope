@@ -316,6 +316,7 @@ func (s *Server) queryMetric(metric series.Metric, start, end time.Time, transfo
 	if err != nil {
 		return nil, err
 	}
+	points = filterQueryPoints(metric, points)
 	if transform == "rate" || strings.HasSuffix(metric.Name, "_total") {
 		return ratePoints(points), nil
 	}
@@ -324,6 +325,20 @@ func (s *Server) queryMetric(metric series.Metric, start, end time.Time, transfo
 		encoded = append(encoded, [2]float64{float64(point.Timestamp), point.Value})
 	}
 	return encoded, nil
+}
+
+func filterQueryPoints(metric series.Metric, points []tstorage.DataPoint) []tstorage.DataPoint {
+	if metric.Name != "cpu_package_power_w" || metric.Labels["collector"] != "zenpower" {
+		return points
+	}
+	out := points[:0]
+	for _, point := range points {
+		if point.Value < 0 || point.Value > 1000 {
+			continue
+		}
+		out = append(out, point)
+	}
+	return out
 }
 
 func (s *Server) LoadLayout() (DashboardLayout, error) {

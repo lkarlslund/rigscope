@@ -10,6 +10,34 @@ The old workload/event runner still exists as a legacy command, but the current 
 
 ## Quick Start
 
+For Linux, install the latest daily release instead of building from source:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lkarlslund/rigscope/master/scripts/install.sh | sudo bash
+```
+
+The installer downloads the latest `linux-amd64` release binary, creates a dedicated `rigscope` system user, installs the binary under `/opt/rigscope`, stores data under `/opt/rigscope/data`, installs a systemd service, then enables and starts it immediately.
+
+Then open:
+
+```text
+http://127.0.0.1:7077
+```
+
+To uninstall the service and binary while keeping data:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lkarlslund/rigscope/master/scripts/uninstall.sh | sudo bash
+```
+
+To also remove `/opt/rigscope/data` and the `rigscope` user/group:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lkarlslund/rigscope/master/scripts/uninstall.sh | sudo RIGSCOPE_REMOVE_DATA=1 bash
+```
+
+Manual source runs are mainly for development:
+
 ```bash
 go run ./cmd/rigscope serve
 ```
@@ -94,7 +122,7 @@ go run ./cmd/rigscope serve --no-rocm --no-zenpower
 
 ## Storage
 
-Samples are stored under `data/tsdb` by default using `github.com/nakabonne/tstorage`, an embedded Go time-series database. History is unlimited by default; set `--retention` to a duration such as `168h` if you want pruning. The dependency is Apache-2.0 licensed, which is permissive and compatible with an MIT-licensed application; keep its notice/license text when distributing binaries or bundled source.
+Samples are stored under `data/tsdb` by default when running manually, or `/opt/rigscope/data/tsdb` when installed with `install.sh`, using `github.com/nakabonne/tstorage`, an embedded Go time-series database. History is unlimited by default; set `--retention` to a duration such as `168h` if you want pruning. The dependency is Apache-2.0 licensed, which is permissive and compatible with an MIT-licensed application; keep its notice/license text when distributing binaries or bundled source.
 
 Current metric examples:
 
@@ -132,7 +160,3 @@ Use `start` and `end` query parameters as Unix milliseconds for an explicit time
 ## License
 
 MIT.
-
-## References
-
-Collector coverage was compared against Kula, bottom, amdgpu_top, and xdna-top. Kula is AGPL-3.0, so it is reference-only. bottom and amdgpu_top are MIT licensed. xdna-top is Apache-2.0 licensed.

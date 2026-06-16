@@ -1,0 +1,21 @@
+[Unit]
+Description=rigscope telemetry daemon
+Documentation=https://github.com/lkarlslund/rigscope
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rigscope
+Group=rigscope
+WorkingDirectory=/opt/rigscope
+ExecStart=/opt/rigscope/rigscope serve --addr 0.0.0.0:7077 --data-dir /opt/rigscope/data --interval 1s --retention 0 --log-level info
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ReadWritePaths=/opt/rigscope
+
+[Install]
+WantedBy=multi-user.target
