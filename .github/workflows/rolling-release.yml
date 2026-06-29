@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 0 * * *"
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Rebuild and replace assets even when the latest release is already at HEAD"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -29,6 +35,7 @@ jobs:
         id: meta
         env:
           GH_TOKEN: ${{ github.token }}
+          FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild }}
         run: |
           set -euo pipefail
 
@@ -37,26 +44,58 @@ jobs:
             git fetch --force origin "refs/tags/${latest_tag}:refs/tags/${latest_tag}" || true
           fi
 
+          release_has_expected_assets() {
+            local tag="$1"
+            local missing=0
+            local asset
+            local expected_assets=(
+              "rigscope-${tag}-linux-amd64"
+              "rigscope-${tag}-linux-amd64.sha256"
+              "rigscope-${tag}-windows-amd64.exe"
+              "rigscope-${tag}-windows-amd64.exe.sha256"
+            )
+
+            mapfile -t release_assets < <(gh release view "$tag" --json assets --jq '.assets[].name')
+            for asset in "${expected_assets[@]}"; do
+              if ! printf '%s\n' "${release_assets[@]}" | grep -Fxq "$asset"; then
+                echo "Release ${tag} is missing ${asset}."
+                missing=1
+              fi
+            done
+
+            return "$missing"
+          }
+
+          repair_release=false
           if [[ -n "$latest_tag" ]] && git rev-parse -q --verify "refs/tags/${latest_tag}" >/dev/null; then
             if [[ "$(git rev-parse HEAD)" == "$(git rev-parse "${latest_tag}")" ]]; then
-              echo "changed=false" >>"$GITHUB_OUTPUT"
-              echo "No changes since ${latest_tag}; skipping release."
-              exit 0
+              if [[ "${FORCE_REBUILD}" != "true" ]] && release_has_expected_assets "$latest_tag"; then
+                echo "changed=false" >>"$GITHUB_OUTPUT"
+                echo "No changes since ${latest_tag}, and all expected assets exist; skipping release."
+                exit 0
+              fi
+
+              repair_release=true
+              tag="$latest_tag"
+              changelog_range="${latest_tag}..HEAD"
+            else
+              previous_number="${latest_tag#r}"
+              next_number=$((10#$previous_number + 1))
+              tag="$(printf 'r%04d' "$next_number")"
+              changelog_range="${latest_tag}..HEAD"
             fi
-            previous_number="${latest_tag#r}"
-            next_number=$((10#$previous_number + 1))
-            changelog_range="${latest_tag}..HEAD"
           else
             next_number=1
+            tag="$(printf 'r%04d' "$next_number")"
             changelog_range="HEAD"
           fi
 
-          tag="$(printf 'r%04d' "$next_number")"
           short_sha="$(git rev-parse --short=12 HEAD)"
           built_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
           {
             echo "changed=true"
+            echo "repair_release=${repair_release}"
             echo "tag=${tag}"
             echo "short_sha=${short_sha}"
             echo "built_at=${built_at}"
@@ -69,7 +108,11 @@ jobs:
             echo
             echo "### Changelog"
             echo
-            git log --no-merges --format='- %s (%h)' "$changelog_range"
+            if [[ "$repair_release" == "true" ]]; then
+              echo "- Rebuilt release assets for ${short_sha}."
+            else
+              git log --no-merges --format='- %s (%h)' "$changelog_range"
+            fi
           } > release-notes.md
 
       - name: Run tests
@@ -122,13 +165,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
+          REPAIR_RELEASE: ${{ steps.meta.outputs.repair_release }}
         run: |
           set -euo pipefail
-          gh release create "$TAG" \
-            --target "$GITHUB_SHA" \
-            --title "$TAG" \
-            --notes-file release-notes.md \
-            "dist/rigscope-${TAG}-linux-amd64" \
-            "dist/rigscope-${TAG}-linux-amd64.sha256" \
-            "dist/rigscope-${TAG}-windows-amd64.exe" \
-            "dist/rigscope-${TAG}-windows-amd64.exe.sha256"
+          if [[ "$REPAIR_RELEASE" == "true" ]]; then
+            gh release upload "$TAG" \
+              "dist/rigscope-${TAG}-linux-amd64" \
+              "dist/rigscope-${TAG}-linux-amd64.sha256" \
+              "dist/rigscope-${TAG}-windows-amd64.exe" \
+              "dist/rigscope-${TAG}-windows-amd64.exe.sha256" \
+              --clobber
+            gh release edit "$TAG" \
+              --title "$TAG" \
+              --notes-file release-notes.md
+          else
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --notes-file release-notes.md \
+              "dist/rigscope-${TAG}-linux-amd64" \
+              "dist/rigscope-${TAG}-linux-amd64.sha256" \
+              "dist/rigscope-${TAG}-windows-amd64.exe" \
+              "dist/rigscope-${TAG}-windows-amd64.exe.sha256"
+          fi
