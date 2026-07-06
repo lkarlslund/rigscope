@@ -45,6 +45,7 @@ button:hover { border-color: #4c5f75; background: #202c3e; }
   top: 0;
   z-index: 10;
   display: grid;
+  grid-template-areas: "brand summary actions";
   grid-template-columns: minmax(180px, 210px) minmax(280px, 1fr) auto;
   gap: 16px;
   align-items: center;
@@ -55,6 +56,7 @@ button:hover { border-color: #4c5f75; background: #202c3e; }
 }
 
 .brand-block {
+  grid-area: brand;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -75,6 +77,7 @@ button:hover { border-color: #4c5f75; background: #202c3e; }
 }
 
 .action-row {
+  grid-area: actions;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -352,6 +355,7 @@ h1, h2, h3, p { margin: 0; }
 h1 { font-size: clamp(28px, 5vw, 54px); line-height: 1; max-width: 760px; }
 
 .summary-grid {
+  grid-area: summary;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: stretch;
@@ -381,12 +385,14 @@ h1 { font-size: clamp(28px, 5vw, 54px); line-height: 1; max-width: 760px; }
 
 .dashboard {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: 14px;
   align-items: start;
+  min-width: 0;
 }
 
 .graph-card {
+  width: 100%;
   min-width: 0;
   border: 1px solid rgba(148, 163, 184, 0.18);
   background: linear-gradient(180deg, rgba(25, 34, 49, 0.96), rgba(16, 22, 31, 0.96));
@@ -402,6 +408,7 @@ h1 { font-size: clamp(28px, 5vw, 54px); line-height: 1; max-width: 760px; }
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
   padding: 10px 10px 8px 12px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
 }
@@ -486,6 +493,7 @@ h1 { font-size: clamp(28px, 5vw, 54px); line-height: 1; max-width: 760px; }
 
 .canvas-wrap {
   height: 280px;
+  min-width: 0;
   padding: 8px 10px 12px;
 }
 
@@ -676,12 +684,26 @@ menu {
 }
 
 @media (max-width: 900px) {
-  .topbar { grid-template-columns: 1fr; display: grid; }
-  .brand { width: min(220px, 72vw); }
-  .action-row { align-items: stretch; }
-  .status-range-group { justify-content: start; }
-  .button-group { justify-content: start; }
-  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .topbar {
+    grid-template-areas:
+      "brand actions"
+      "summary summary";
+    grid-template-columns: minmax(120px, 1fr) minmax(0, auto);
+    gap: 10px 12px;
+    align-items: center;
+  }
+  .brand { width: min(180px, 100%); }
+  .action-row {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .status-range-group { justify-content: flex-end; }
+  .button-group { justify-content: flex-end; }
+  .summary-grid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 6px;
+  }
   .dashboard { grid-template-columns: 1fr; }
   .graph-card.wide { grid-column: auto; }
   .editor-grid { grid-template-columns: 1fr; }
@@ -690,13 +712,69 @@ menu {
 
 @media (max-width: 520px) {
   main { padding: 12px; }
-  .topbar { padding: 10px 12px; }
-  .action-row { flex-direction: column; }
-  .status-range-group, .button-group { width: 100%; }
-  .button-group { justify-content: flex-start; }
-  .button-group button { flex: 0 0 42px; }
-  .summary-grid { grid-template-columns: 1fr; }
-  .summary-tile { min-width: 0; }
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .brand { width: clamp(88px, 27vw, 128px); }
+  .brand img {
+    width: 100%;
+    height: auto;
+  }
+  .action-row {
+    width: 100%;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .status-range-group, .button-group {
+    width: auto;
+    gap: 5px;
+  }
+  .status-range-group {
+    flex: 1 1 122px;
+    justify-content: flex-end;
+  }
+  .button-group {
+    flex: 0 1 112px;
+  }
+  .pill {
+    min-height: 28px;
+    padding: 0 8px;
+  }
+  .range {
+    min-height: 30px;
+    padding: 0 5px;
+  }
+  .range-label { display: none; }
+  .range select {
+    min-height: 26px;
+    min-width: 62px;
+    padding-left: 7px;
+  }
+  .button-group button {
+    flex: 0 0 34px;
+    width: 34px;
+    min-width: 34px;
+    min-height: 34px;
+  }
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-tile {
+    min-width: 0;
+    min-height: 38px;
+    padding: 4px 8px;
+  }
+  .summary-tile b { font-size: 15px; }
+  .graph-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .graph-tools {
+    width: 100%;
+    justify-content: flex-end;
+  }
   .canvas-wrap { height: 240px; }
   #graphLightbox {
     width: calc(100vw - 16px);
