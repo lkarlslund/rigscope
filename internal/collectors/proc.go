@@ -475,7 +475,41 @@ func (c *Disk) Sample(context.Context) (map[string]any, error) {
 }
 
 func skipBlockDevice(device string) bool {
-	return strings.HasPrefix(device, "loop") || strings.HasPrefix(device, "ram") || strings.HasPrefix(device, "dm-")
+	return strings.HasPrefix(device, "loop") ||
+		strings.HasPrefix(device, "ram") ||
+		strings.HasPrefix(device, "zram") ||
+		strings.HasPrefix(device, "dm-") ||
+		isNVMeControllerNamespace(device)
+}
+
+func isNVMeControllerNamespace(device string) bool {
+	if !strings.HasPrefix(device, "nvme") {
+		return false
+	}
+	rest := strings.TrimPrefix(device, "nvme")
+	controller, rest, ok := consumeDigits(rest)
+	if !ok || rest == "" || rest[0] != 'c' {
+		return false
+	}
+	rest = rest[1:]
+	controllerNamespace, rest, ok := consumeDigits(rest)
+	if !ok || rest == "" || rest[0] != 'n' {
+		return false
+	}
+	rest = rest[1:]
+	namespace, rest, ok := consumeDigits(rest)
+	return ok && rest == "" && controller != "" && controllerNamespace != "" && namespace != ""
+}
+
+func consumeDigits(s string) (string, string, bool) {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 {
+		return "", s, false
+	}
+	return s[:i], s[i:], true
 }
 
 type Filesystem struct {

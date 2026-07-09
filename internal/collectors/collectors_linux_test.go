@@ -79,6 +79,52 @@ func TestZenpowerSamplesPackagePower(t *testing.T) {
 	}
 }
 
+func TestDiskSkipsNVMeControllerNamespaceDuplicates(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "diskstats")
+	writeFile(t, path, strings.Join([]string{
+		"259 1 nvme0c0n1 1 0 10 0 2 0 20 0 0 0 0 0 0 0 0 0 0",
+		"259 2 nvme0n1 1 0 10 0 2 0 20 0 0 0 0 0 0 0 0 0 0",
+		"259 3 nvme0n1p1 1 0 10 0 2 0 20 0 0 0 0 0 0 0 0 0 0",
+		"253 0 zram0 1 0 10 0 2 0 20 0 0 0 0 0 0 0 0 0 0",
+	}, "\n"))
+
+	sample, err := (&Disk{Path: path}).Sample(context.Background())
+	if err != nil {
+		t.Fatalf("Sample() error = %v", err)
+	}
+	metrics := sample["metrics"].([]map[string]any)
+	seen := map[string]bool{}
+	for _, metric := range metrics {
+		labels := metric["labels"].(map[string]string)
+		seen[labels["device"]] = true
+	}
+	if seen["nvme0c0n1"] || seen["zram0"] {
+		t.Fatalf("duplicate and ram-backed devices should be skipped: %#v", metrics)
+	}
+	if !seen["nvme0n1"] || !seen["nvme0n1p1"] {
+		t.Fatalf("regular namespace and partitions should remain: %#v", metrics)
+	}
+}
+
+func TestNVMeControllerNamespaceDetection(t *testing.T) {
+	tests := []struct {
+		device string
+		want   bool
+	}{
+		{device: "nvme0c0n1", want: true},
+		{device: "nvme12c3n45", want: true},
+		{device: "nvme0n1", want: false},
+		{device: "nvme0n1p1", want: false},
+		{device: "nvme0c0n1p1", want: false},
+		{device: "sda", want: false},
+	}
+	for _, tt := range tests {
+		if got := isNVMeControllerNamespace(tt.device); got != tt.want {
+			t.Fatalf("isNVMeControllerNamespace(%q) = %v, want %v", tt.device, got, tt.want)
+		}
+	}
+}
+
 func TestThermalHwmonMetricsIncludesGenericPowerSensors(t *testing.T) {
 	root := t.TempDir()
 	nvme := filepath.Join(root, "hwmon0")
