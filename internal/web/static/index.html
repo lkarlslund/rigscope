@@ -21,9 +21,10 @@
         <div class="range" id="rangeButtons"></div>
       </div>
       <div class="button-group" role="group" aria-label="Graph actions">
-        <button class="icon-button graph-icon" id="graphDrawerButton" title="Show unused graphs" aria-label="Show unused graphs"></button>
+        <button class="icon-button edit-icon" id="editModeButton" title="Edit dashboard" aria-label="Edit dashboard" aria-pressed="false"></button>
+        <button class="icon-button graph-icon edit-only" id="graphDrawerButton" title="Show unused graphs" aria-label="Show unused graphs"></button>
         <button class="icon-button pause-icon" id="pauseButton" title="Pause live graph updates" aria-label="Pause live graph updates"></button>
-        <button class="icon-button primary-button add-icon" id="addGraphButton" title="Add graph" aria-label="Add graph"></button>
+        <button class="icon-button primary-button add-icon edit-only" id="addGraphButton" title="Add graph" aria-label="Add graph"></button>
       </div>
     </div>
   </header>
@@ -62,6 +63,20 @@
     </div>
   </dialog>
 
+  <dialog id="summaryDialog">
+    <form method="dialog" class="dialog-card" id="summaryForm">
+      <div class="dialog-head">
+        <div>
+          <h2>Top Indicators</h2>
+          <p>Choose metrics to show in the top bar.</p>
+        </div>
+        <button value="cancel" class="ghost-button" id="summaryDialogClose">Close</button>
+      </div>
+      <label>Metric search <input id="summarySearch" placeholder="gpu, power, temperature, memory"></label>
+      <div class="metric-picker" id="summaryPicker"></div>
+    </form>
+  </dialog>
+
   <dialog id="graphDialog">
     <form method="dialog" class="dialog-card" id="graphForm">
       <div class="dialog-head">
@@ -78,6 +93,7 @@
         <label>Y min <input id="graphYMin" inputmode="decimal"></label>
         <label>Y max <input id="graphYMax" inputmode="decimal"></label>
         <label class="checkbox-label"><input id="graphStacked" type="checkbox"> Stack series</label>
+        <label class="checkbox-label"><input id="graphShowAverage" type="checkbox"> Show averages</label>
         <label class="wide">Metric search <input id="metricSearch" placeholder="gpu_power, temperature, network"></label>
       </div>
       <div class="unit-filter" id="unitFilter" aria-label="Metric unit filter"></div>

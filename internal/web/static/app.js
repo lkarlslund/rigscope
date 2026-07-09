@@ -8,6 +8,7 @@ const pauseButton = document.getElementById('pauseButton');
 const updateBanner = document.getElementById('updateBanner');
 const reloadButton = document.getElementById('reloadButton');
 const collectorAlert = document.getElementById('collectorAlert');
+const editModeButton = document.getElementById('editModeButton');
 const addGraphButton = document.getElementById('addGraphButton');
 const graphDrawerButton = document.getElementById('graphDrawerButton');
 const graphDrawer = document.getElementById('graphDrawer');
@@ -18,6 +19,9 @@ const lightboxTitle = document.getElementById('lightboxTitle');
 const lightboxSubtitle = document.getElementById('lightboxSubtitle');
 const lightboxClose = document.getElementById('lightboxClose');
 const lightboxCanvas = document.getElementById('lightboxCanvas');
+const summaryDialog = document.getElementById('summaryDialog');
+const summarySearch = document.getElementById('summarySearch');
+const summaryPicker = document.getElementById('summaryPicker');
 const graphDialog = document.getElementById('graphDialog');
 const graphForm = document.getElementById('graphForm');
 const dialogTitle = document.getElementById('dialogTitle');
@@ -28,6 +32,7 @@ const graphYScale = document.getElementById('graphYScale');
 const graphYMin = document.getElementById('graphYMin');
 const graphYMax = document.getElementById('graphYMax');
 const graphStacked = document.getElementById('graphStacked');
+const graphShowAverage = document.getElementById('graphShowAverage');
 const metricSearch = document.getElementById('metricSearch');
 const unitFilter = document.getElementById('unitFilter');
 const metricPicker = document.getElementById('metricPicker');
@@ -75,6 +80,8 @@ let selectedSeries = [];
 let selectedUnitFilter = '';
 let reconnectDelay = 1000;
 let lastPointTime = 0;
+let editMode = false;
+let summaryDragActive = false;
 
 Chart.defaults.color = '#9aa8bb';
 Chart.defaults.borderColor = 'rgba(148, 163, 184, 0.16)';
@@ -103,7 +110,48 @@ const missingDataPlugin = {
   },
 };
 
-Chart.register(missingDataPlugin);
+const averageLinePlugin = {
+  id: 'averageLine',
+  afterDatasetsDraw(chart) {
+    if (!chart.$rigscopeGraph?.show_average) return;
+    const area = chart.chartArea;
+    const xScale = chart.scales.x;
+    if (!area || !xScale) return;
+    const averages = visibleDatasetAverages(chart);
+    if (!averages.length) return;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top);
+    ctx.clip();
+    ctx.font = '11px Inter, ui-sans-serif, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    for (const avg of averages) {
+      const y = avg.scale.getPixelForValue(avg.value);
+      if (!Number.isFinite(y) || y < area.top || y > area.bottom) continue;
+      ctx.strokeStyle = avg.color;
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.moveTo(area.left, y);
+      ctx.lineTo(area.right, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      const label = `avg ${formatValue(avg.value, axisSymbol(chart.$rigscopeGraph, avg.axisID))}`;
+      const width = ctx.measureText(label).width + 8;
+      const left = Math.max(area.left + 4, area.right - width - 4);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+      ctx.fillRect(left, y - 9, width, 18);
+      ctx.fillStyle = avg.color;
+      ctx.fillText(label, left + 4, y);
+    }
+    ctx.restore();
+  },
+};
+
+Chart.register(missingDataPlugin, averageLinePlugin);
 
 function wsURL() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -345,22 +393,206 @@ function renderRangeButtons() {
 function renderSummary(points = latestSummaryPoints) {
   latestSummaryPoints = points || [];
   points = latestSummaryPoints;
-  const totalPower = totalKnownPower(points);
-  const wanted = [
-    ['Total Power', () => null, totalPower !== null ? formatValue(totalPower, 'W') : 'n/a'],
-    ['GPU Load', p => p.name === 'gpu_util_pct'],
-    ['NPU', p => p.name.startsWith('npu_')],
-    ['Thermals', p => p.kind === 'temperature' || p.name.includes('temp')],
-    ['Energy', () => null, summaryEnergyWh !== null ? formatEnergy(summaryEnergyWh) : 'n/a'],
-  ];
+  const indicators = summaryIndicators();
+  if (summaryDragActive) return;
+  if (canUpdateSummaryInPlace(indicators)) {
+    updateSummaryTileValues(indicators, points);
+    return;
+  }
   summaryGrid.innerHTML = '';
-  for (const [title, pick, value] of wanted) {
-    const point = [...points].reverse().find(p => pick(p));
+  for (const indicator of indicators) {
     const tile = document.createElement('div');
     tile.className = 'summary-tile';
-    tile.innerHTML = `<span class="subtle">${title}</span><b>${value || (point ? formatValue(point.value, point.symbol || point.unit) : 'n/a')}</b>`;
+    tile.dataset.summaryId = indicator.id;
+    tile.innerHTML = `
+      <div class="summary-edit-tools">
+        <button type="button" class="summary-drag" title="Drag indicator" aria-label="Drag indicator">⠿</button>
+        <button type="button" class="summary-remove" title="Remove indicator" aria-label="Remove indicator">−</button>
+      </div>
+      <span class="subtle">${escapeHTML(indicator.title)}</span>
+      <b>${escapeHTML(summaryIndicatorValue(indicator, points))}</b>
+    `;
+    tile.querySelector('.summary-remove').onclick = event => {
+      event.stopPropagation();
+      removeSummaryIndicator(indicator.id);
+    };
     summaryGrid.append(tile);
   }
+  if (editMode) {
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'summary-add-tile';
+    add.textContent = '+';
+    add.title = 'Add top indicator';
+    add.setAttribute('aria-label', 'Add top indicator');
+    add.onclick = () => openSummaryDialog();
+    summaryGrid.append(add);
+  }
+  setupSummarySortable();
+}
+
+function canUpdateSummaryInPlace(indicators) {
+  const tiles = [...summaryGrid.querySelectorAll('.summary-tile')];
+  if (tiles.length !== indicators.length) return false;
+  if (!!summaryGrid.querySelector('.summary-add-tile') !== editMode) return false;
+  return indicators.every((indicator, index) => tiles[index]?.dataset.summaryId === indicator.id);
+}
+
+function updateSummaryTileValues(indicators, points) {
+  const tiles = [...summaryGrid.querySelectorAll('.summary-tile')];
+  indicators.forEach((indicator, index) => {
+    const tile = tiles[index];
+    const label = tile.querySelector('.subtle');
+    const value = tile.querySelector('b');
+    if (label) label.textContent = indicator.title;
+    if (value) value.textContent = summaryIndicatorValue(indicator, points);
+  });
+}
+
+function defaultSummaryIndicators() {
+  return [
+    { id: 'summary-total-power', title: 'Total Power', kind: 'total_power' },
+    { id: 'summary-gpu-load', title: 'GPU Load', kind: 'auto', match: 'gpu_load' },
+    { id: 'summary-npu', title: 'NPU', kind: 'auto', match: 'npu' },
+    { id: 'summary-thermals', title: 'Thermals', kind: 'auto', match: 'thermals' },
+    { id: 'summary-energy', title: 'Energy', kind: 'energy' },
+  ];
+}
+
+function summaryIndicators() {
+  return Array.isArray(layout.summary) ? layout.summary : defaultSummaryIndicators();
+}
+
+function ensureSummaryLayout() {
+  if (!Array.isArray(layout.summary)) layout.summary = defaultSummaryIndicators().map(item => ({ ...item }));
+  return layout.summary;
+}
+
+function summaryIndicatorValue(indicator, points) {
+  if (indicator.kind === 'total_power') {
+    const totalPower = totalKnownPower(points);
+    return totalPower !== null ? formatValue(totalPower, 'W') : 'n/a';
+  }
+  if (indicator.kind === 'energy') {
+    return summaryEnergyWh !== null ? formatEnergy(summaryEnergyWh) : 'n/a';
+  }
+  const point = [...points].reverse().find(p => summaryIndicatorMatchesPoint(indicator, p));
+  return point ? formatValue(point.value, point.symbol || point.unit) : 'n/a';
+}
+
+function summaryIndicatorMatchesPoint(indicator, point) {
+  if (!point) return false;
+  if (indicator.kind === 'metric' && indicator.metric) {
+    return point.name === indicator.metric.name && sameLabels(point.labels || {}, indicator.metric.labels || {});
+  }
+  switch (indicator.match) {
+    case 'gpu_load':
+      return point.name === 'gpu_util_pct';
+    case 'npu':
+      return point.name?.startsWith('npu_');
+    case 'thermals':
+      return point.kind === 'temperature' || point.name?.includes('temp');
+    default:
+      return false;
+  }
+}
+
+function setupSummarySortable() {
+  Sortable.get(summaryGrid)?.destroy();
+  if (!editMode) return;
+  Sortable.create(summaryGrid, {
+    animation: 150,
+    handle: '.summary-tile',
+    draggable: '.summary-tile',
+    filter: '.summary-remove',
+    preventOnFilter: false,
+    onStart: () => {
+      summaryDragActive = true;
+    },
+    onEnd: () => {
+      summaryDragActive = false;
+      const byID = new Map(summaryIndicators().map(item => [item.id, item]));
+      layout.summary = [...summaryGrid.querySelectorAll('.summary-tile')]
+        .map(tile => byID.get(tile.dataset.summaryId))
+        .filter(Boolean);
+      saveLayout().then(() => renderSummary());
+    },
+    onChoose: () => {
+      summaryDragActive = true;
+    },
+    onUnchoose: () => {
+      summaryDragActive = false;
+    },
+  });
+}
+
+function removeSummaryIndicator(id) {
+  layout.summary = ensureSummaryLayout().filter(item => item.id !== id);
+  saveLayout().then(() => renderSummary());
+}
+
+function openSummaryDialog() {
+  summarySearch.value = '';
+  renderSummaryPicker();
+  summaryDialog.showModal();
+}
+
+function renderSummaryPicker() {
+  const q = summarySearch.value.trim().toLowerCase();
+  const selected = new Set(summaryIndicators().map(item => item.id));
+  const choices = availableSummaryChoices()
+    .filter(item => !selected.has(item.id))
+    .filter(item => !q || JSON.stringify(item).toLowerCase().includes(q))
+    .slice(0, 120);
+  summaryPicker.innerHTML = '';
+  for (const choice of choices) {
+    const row = document.createElement('div');
+    row.className = 'metric-choice';
+    row.innerHTML = `<div><b>${escapeHTML(choice.title)}</b><small>${escapeHTML(choice.subtitle || '')}</small></div><button type="button">Add</button>`;
+    row.querySelector('button').onclick = () => {
+      ensureSummaryLayout().push(choice.indicator);
+      saveLayout().then(() => {
+        renderSummary();
+        renderSummaryPicker();
+      });
+    };
+    summaryPicker.append(row);
+  }
+  if (!choices.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty metric-empty';
+    empty.textContent = 'No matching indicators';
+    summaryPicker.append(empty);
+  }
+}
+
+function availableSummaryChoices() {
+  const choices = [
+    {
+      id: 'summary-total-power',
+      title: 'Total Power',
+      subtitle: 'Sum of known live power metrics',
+      indicator: { id: 'summary-total-power', title: 'Total Power', kind: 'total_power' },
+    },
+    {
+      id: 'summary-energy',
+      title: 'Energy',
+      subtitle: 'Integrated power over the selected range',
+      indicator: { id: 'summary-energy', title: 'Energy', kind: 'energy' },
+    },
+  ];
+  for (const metric of catalog.metrics || []) {
+    const label = labelForMetric(metric) || displayMetricName(metric);
+    const unit = unitLabel(metric);
+    const id = `summary-metric-${metricKey(metric)}`;
+    choices.push({
+      id,
+      title: label,
+      subtitle: `${metric.name}${unit ? ` · ${unit}` : ''}`,
+      indicator: { id, title: label, kind: 'metric', metric },
+    });
+  }
+  return choices;
 }
 
 function renderCollectorAlert(errors = []) {
@@ -498,7 +730,13 @@ function renderDashboard() {
     return;
   }
   for (const graph of graphs) dashboard.append(graphCard(graph));
+  setupDashboardSortable();
+  renderGraphDrawer();
+}
+
+function setupDashboardSortable() {
   Sortable.get(dashboard)?.destroy();
+  if (!editMode) return;
   Sortable.create(dashboard, {
     animation: 150,
     handle: '.drag-handle',
@@ -515,7 +753,6 @@ function renderDashboard() {
       saveLayout();
     },
   });
-  renderGraphDrawer();
 }
 
 function renderGraphDrawer() {
@@ -588,6 +825,24 @@ function toggleGraphLegend(graph) {
   saveLayout().then(refreshAllGraphs);
 }
 
+function toggleGraphAverage(graph) {
+  const next = !graph.show_average;
+  if (graph.kind === 'builtin') {
+    const custom = cloneGraphAsCustom(graph);
+    custom.show_average = next;
+    layout.custom_graphs = (layout.custom_graphs || []).filter(item => item.id !== custom.id);
+    layout.hidden_custom = (layout.hidden_custom || []).filter(id => id !== custom.id);
+    layout.custom_graphs.push(custom);
+    layout.hidden_default = [...new Set([...(layout.hidden_default || []), graph.id])];
+    layout.order = (layout.order || allGraphs().map(item => item.id)).map(id => id === graph.id ? custom.id : id);
+  } else {
+    const custom = (layout.custom_graphs || []).find(item => item.id === graph.id);
+    if (custom) custom.show_average = next;
+    graph.show_average = next;
+  }
+  saveLayout().then(refreshAllGraphs);
+}
+
 function deleteCustomGraph(id) {
   layout.custom_graphs = (layout.custom_graphs || []).filter(graph => graph.id !== id);
   layout.hidden_custom = (layout.hidden_custom || []).filter(hiddenID => hiddenID !== id);
@@ -610,6 +865,7 @@ function graphCard(graph) {
       <div class="graph-tools">
         <button class="graph-icon-button drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⠿</button>
         <button class="graph-icon-button ${graph.show_legend === false ? '' : 'active'}" data-action="legend" title="Toggle labels" aria-label="Toggle labels">Aa</button>
+        <button class="graph-icon-button ${graph.show_average ? 'active' : ''}" data-action="average" title="Toggle averages" aria-label="Toggle averages">avg</button>
         <button class="graph-icon-button" data-action="reset" title="Reset zoom" aria-label="Reset zoom">↺</button>
         <button class="graph-icon-button" data-action="edit" title="Edit graph" aria-label="Edit graph">✎</button>
         <button class="graph-icon-button" data-action="hide" title="Hide graph" aria-label="Hide graph">−</button>
@@ -621,6 +877,7 @@ function graphCard(graph) {
   card.querySelector('[data-action="hide"]').onclick = () => hideGraph(graph);
   card.querySelector('[data-action="reset"]').onclick = () => charts.get(graph.id)?.resetZoom?.();
   card.querySelector('[data-action="legend"]').onclick = () => toggleGraphLegend(graph);
+  card.querySelector('[data-action="average"]').onclick = () => toggleGraphAverage(graph);
   const canvas = card.querySelector('canvas');
   makeChart(graph, canvas);
   installGraphLightboxTrigger(canvas, graph);
@@ -718,6 +975,7 @@ function makeChart(graph, canvas, options = {}) {
       },
     },
   });
+  chart.$rigscopeGraph = graph;
   if (options.store !== false) charts.set(graph.id, chart);
   return chart;
 }
@@ -764,6 +1022,36 @@ function formatAxisTick(value, symbol) {
 function axisSymbol(graph, axisID) {
   const axis = axisID === 'y2' ? graph.axes?.y2 : graph.axes?.y;
   return axis?.symbol || axis?.unit || '';
+}
+
+function visibleDatasetAverages(chart) {
+  const xScale = chart.scales.x;
+  if (!xScale) return [];
+  const minX = Number.isFinite(xScale.min) ? xScale.min : -Infinity;
+  const maxX = Number.isFinite(xScale.max) ? xScale.max : Infinity;
+  const out = [];
+  for (const [index, dataset] of (chart.data.datasets || []).entries()) {
+    if (typeof chart.isDatasetVisible === 'function' && !chart.isDatasetVisible(index)) continue;
+    const axisID = dataset.yAxisID || 'y';
+    const scale = chart.scales[axisID];
+    if (!scale) continue;
+    let total = 0;
+    let count = 0;
+    for (const point of dataset.data || []) {
+      if (!point || point.missing || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+      if (point.x < minX || point.x > maxX) continue;
+      total += point.y;
+      count++;
+    }
+    if (!count) continue;
+    out.push({
+      value: total / count,
+      color: dataset.borderColor || '#94a3b8',
+      axisID,
+      scale,
+    });
+  }
+  return out;
 }
 
 function openGraphLightbox(graph) {
@@ -1125,6 +1413,7 @@ function openEditor(graph = null) {
   graphYMax.value = Number.isFinite(custom.axes?.y?.max) ? custom.axes.y.max : '';
   graphStacked.checked = graphYScale.value === 'logarithmic' ? false : !!custom.stacked;
   graphStacked.disabled = graphYScale.value === 'logarithmic';
+  graphShowAverage.checked = !!custom.show_average;
   selectedUnitFilter = defaultUnitFilter(custom);
   dialogTitle.textContent = graph?.kind === 'builtin' ? 'Customize built-in graph' : graph ? 'Edit custom graph' : 'Add custom graph';
   dialogSubtitle.textContent = graph?.kind === 'builtin' ? 'Saving creates a custom graph based on this built-in preset.' : 'Choose metrics, labels, colors, and axis text.';
@@ -1135,6 +1424,22 @@ function openEditor(graph = null) {
   graphDialog.showModal();
 }
 
+function setEditMode(next) {
+  editMode = !!next;
+  document.body.classList.toggle('edit-mode', editMode);
+  editModeButton.classList.toggle('active', editMode);
+  editModeButton.setAttribute('aria-pressed', String(editMode));
+  const label = editMode ? 'Finish editing dashboard' : 'Edit dashboard';
+  editModeButton.title = label;
+  editModeButton.setAttribute('aria-label', label);
+  if (!editMode) {
+    graphDrawer.hidden = true;
+    if (summaryDialog.open) summaryDialog.close();
+  }
+  setupDashboardSortable();
+  renderSummary();
+}
+
 function newCustomGraph() {
   return {
     id: `custom-${crypto.randomUUID()}`,
@@ -1143,6 +1448,7 @@ function newCustomGraph() {
     size: 'normal',
     stacked: false,
     show_legend: true,
+    show_average: false,
     series: [],
     axes: { x: { label: 'Time', mode: 'time' }, y: { label: 'Value', mode: 'auto' } },
   };
@@ -1315,6 +1621,7 @@ function saveGraphFromDialog() {
   base.title = graphTitle.value.trim() || 'Custom graph';
   base.stacked = graphYScale.value === 'logarithmic' ? false : graphStacked.checked;
   if (base.show_legend === undefined || base.show_legend === null) base.show_legend = true;
+  base.show_average = graphShowAverage.checked;
   base.series = selectedSeries;
   base.axes = base.axes || { x: { label: 'Time', mode: 'time' }, y: {} };
   base.axes.y = {
@@ -1397,6 +1704,7 @@ async function init() {
   catalog = await api('/api/catalog');
   layout = await api('/api/graphs/layout');
   renderRangeButtons();
+  setEditMode(false);
   renderSummary();
   scheduleSummaryEnergyRefresh(0);
   renderDashboard();
@@ -1411,7 +1719,9 @@ pauseButton.onclick = () => {
   pauseButton.setAttribute('aria-label', label);
 };
 reloadButton.onclick = () => location.reload();
+editModeButton.onclick = () => setEditMode(!editMode);
 graphDrawerButton.onclick = () => {
+  if (!editMode) return;
   graphDrawer.hidden = !graphDrawer.hidden;
   if (!graphDrawer.hidden) renderGraphDrawer();
 };
@@ -1427,7 +1737,11 @@ graphLightbox.addEventListener('close', () => {
   }
   lightboxGraph = null;
 });
-addGraphButton.onclick = () => openEditor();
+addGraphButton.onclick = () => {
+  if (!editMode) return;
+  openEditor();
+};
+summarySearch.oninput = () => renderSummaryPicker();
 metricSearch.oninput = () => renderMetricPicker();
 graphYScale.onchange = () => {
   const logarithmic = graphYScale.value === 'logarithmic';

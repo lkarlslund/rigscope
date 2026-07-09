@@ -362,6 +362,9 @@ func TestNormalizeLayoutKeepsExplicitlyRestoredDefault(t *testing.T) {
 	if layout.CustomGraphs[0].ShowLegend == nil || !*layout.CustomGraphs[0].ShowLegend {
 		t.Fatal("custom graph show_legend should default to true")
 	}
+	if layout.CustomGraphs[0].ShowAverage == nil || *layout.CustomGraphs[0].ShowAverage {
+		t.Fatal("custom graph show_average should default to false")
+	}
 }
 
 func TestLabelSuffixShortensNoisyHardwareLabels(t *testing.T) {
@@ -468,6 +471,7 @@ func TestDefaultCounterRateGraphsDoNotExposeTotalLabels(t *testing.T) {
 func TestDefaultDiskGraphExcludesPartitionDevices(t *testing.T) {
 	graphs := DefaultGraphs([]series.Metric{
 		{Name: "disk_read_bytes_per_second", Labels: map[string]string{"collector": "disk", "device": "nvme0n1"}, Unit: "byte/second", Symbol: "B/s", Kind: "rate"},
+		{Name: "disk_read_bytes_per_second", Labels: map[string]string{"collector": "disk", "device": "nvme0c0n1"}, Unit: "byte/second", Symbol: "B/s", Kind: "rate"},
 		{Name: "disk_read_bytes_per_second", Labels: map[string]string{"collector": "disk", "device": "nvme0n1p1"}, Unit: "byte/second", Symbol: "B/s", Kind: "rate"},
 		{Name: "disk_written_bytes_per_second", Labels: map[string]string{"collector": "disk", "device": "sda"}, Unit: "byte/second", Symbol: "B/s", Kind: "rate"},
 		{Name: "disk_written_bytes_per_second", Labels: map[string]string{"collector": "disk", "device": "sda1"}, Unit: "byte/second", Symbol: "B/s", Kind: "rate"},
@@ -480,13 +484,13 @@ func TestDefaultDiskGraphExcludesPartitionDevices(t *testing.T) {
 			break
 		}
 	}
-	if len(disk.Series) != 3 {
-		t.Fatalf("disk series = %d, want whole devices only: %#v", len(disk.Series), disk.Series)
+	if len(disk.Series) != 2 {
+		t.Fatalf("disk series = %d, want physical whole devices only: %#v", len(disk.Series), disk.Series)
 	}
 	for _, item := range disk.Series {
 		device := item.Metric.Labels["device"]
-		if device == "nvme0n1p1" || device == "sda1" {
-			t.Fatalf("partition device %q should not be in default disk graph", device)
+		if device == "nvme0n1p1" || device == "sda1" || device == "nvme0c0n1" || device == "zram0" {
+			t.Fatalf("duplicate, virtual, or partition device %q should not be in default disk graph", device)
 		}
 	}
 }

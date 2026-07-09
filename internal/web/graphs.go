@@ -8,24 +8,34 @@ import (
 )
 
 type DashboardLayout struct {
-	Version       int      `json:"version"`
-	TimeRange     string   `json:"time_range"`
-	Order         []string `json:"order"`
-	HiddenDefault []string `json:"hidden_default,omitempty"`
-	HiddenCustom  []string `json:"hidden_custom,omitempty"`
-	CustomGraphs  []Graph  `json:"custom_graphs,omitempty"`
+	Version       int                `json:"version"`
+	TimeRange     string             `json:"time_range"`
+	Order         []string           `json:"order"`
+	HiddenDefault []string           `json:"hidden_default,omitempty"`
+	HiddenCustom  []string           `json:"hidden_custom,omitempty"`
+	CustomGraphs  []Graph            `json:"custom_graphs,omitempty"`
+	Summary       []SummaryIndicator `json:"summary"`
+}
+
+type SummaryIndicator struct {
+	ID     string        `json:"id"`
+	Title  string        `json:"title"`
+	Kind   string        `json:"kind"`
+	Match  string        `json:"match,omitempty"`
+	Metric series.Metric `json:"metric,omitempty"`
 }
 
 type Graph struct {
-	ID         string        `json:"id"`
-	Title      string        `json:"title"`
-	Kind       string        `json:"kind"`
-	SourceID   string        `json:"source_id,omitempty"`
-	Size       string        `json:"size,omitempty"`
-	Stacked    bool          `json:"stacked,omitempty"`
-	ShowLegend *bool         `json:"show_legend,omitempty"`
-	Series     []GraphSeries `json:"series"`
-	Axes       GraphAxes     `json:"axes"`
+	ID          string        `json:"id"`
+	Title       string        `json:"title"`
+	Kind        string        `json:"kind"`
+	SourceID    string        `json:"source_id,omitempty"`
+	Size        string        `json:"size,omitempty"`
+	Stacked     bool          `json:"stacked,omitempty"`
+	ShowLegend  *bool         `json:"show_legend,omitempty"`
+	ShowAverage *bool         `json:"show_average,omitempty"`
+	Series      []GraphSeries `json:"series"`
+	Axes        GraphAxes     `json:"axes"`
 }
 
 type GraphSeries struct {
@@ -83,6 +93,7 @@ func DefaultLayout() DashboardLayout {
 	return DashboardLayout{
 		Version:   1,
 		TimeRange: "15m",
+		Summary:   defaultSummaryIndicators(),
 		Order: []string{
 			"builtin-power",
 			"builtin-cpu-usage",
@@ -108,6 +119,10 @@ func normalizeLayout(layout DashboardLayout) DashboardLayout {
 	if layout.TimeRange == "" {
 		layout.TimeRange = "15m"
 	}
+	if layout.Summary == nil {
+		layout.Summary = defaultSummaryIndicators()
+	}
+	layout.Summary = normalizeSummaryIndicators(layout.Summary)
 	layout.Order = migrateDefaultPowerGraph(layout.Order)
 	layout.HiddenDefault = migrateDefaultPowerGraph(layout.HiddenDefault)
 	layout.HiddenDefault = hideCustomizedDefaults(layout.HiddenDefault, layout.CustomGraphs, layout.Order)
@@ -123,12 +138,45 @@ func normalizeLayout(layout DashboardLayout) DashboardLayout {
 			showLegend := true
 			layout.CustomGraphs[i].ShowLegend = &showLegend
 		}
+		if layout.CustomGraphs[i].ShowAverage == nil {
+			showAverage := false
+			layout.CustomGraphs[i].ShowAverage = &showAverage
+		}
 		for j := range layout.CustomGraphs[i].Series {
 			item := &layout.CustomGraphs[i].Series[j]
 			item.Legend = metricLegend(item.Metric, item.Transform)
 		}
 	}
 	return layout
+}
+
+func defaultSummaryIndicators() []SummaryIndicator {
+	return []SummaryIndicator{
+		{ID: "summary-total-power", Title: "Total Power", Kind: "total_power"},
+		{ID: "summary-gpu-load", Title: "GPU Load", Kind: "auto", Match: "gpu_load"},
+		{ID: "summary-npu", Title: "NPU", Kind: "auto", Match: "npu"},
+		{ID: "summary-thermals", Title: "Thermals", Kind: "auto", Match: "thermals"},
+		{ID: "summary-energy", Title: "Energy", Kind: "energy"},
+	}
+}
+
+func normalizeSummaryIndicators(indicators []SummaryIndicator) []SummaryIndicator {
+	seen := map[string]bool{}
+	out := make([]SummaryIndicator, 0, len(indicators))
+	for _, indicator := range indicators {
+		if indicator.ID == "" || seen[indicator.ID] {
+			continue
+		}
+		if indicator.Title == "" {
+			indicator.Title = indicator.ID
+		}
+		if indicator.Kind == "" {
+			indicator.Kind = "metric"
+		}
+		out = append(out, indicator)
+		seen[indicator.ID] = true
+	}
+	return out
 }
 
 func normalizeIDList(ids []string) []string {
@@ -346,7 +394,16 @@ func isDefaultDiskThroughputMetric(metric series.Metric) bool {
 	default:
 		return false
 	}
-	return !isPartitionDevice(metric.Labels["device"])
+	device := metric.Labels["device"]
+	return !isPartitionDevice(device) && !isVirtualDiskThroughputDevice(device)
+}
+
+func isVirtualDiskThroughputDevice(device string) bool {
+	return strings.HasPrefix(device, "loop") ||
+		strings.HasPrefix(device, "ram") ||
+		strings.HasPrefix(device, "zram") ||
+		strings.HasPrefix(device, "dm-") ||
+		isNVMeControllerNamespace(device)
 }
 
 func isPartitionDevice(device string) bool {
@@ -365,6 +422,36 @@ func isPartitionDevice(device string) bool {
 		}
 	}
 	return false
+}
+
+func isNVMeControllerNamespace(device string) bool {
+	if !strings.HasPrefix(device, "nvme") {
+		return false
+	}
+	rest := strings.TrimPrefix(device, "nvme")
+	controller, rest, ok := consumeDigits(rest)
+	if !ok || rest == "" || rest[0] != 'c' {
+		return false
+	}
+	rest = rest[1:]
+	controllerNamespace, rest, ok := consumeDigits(rest)
+	if !ok || rest == "" || rest[0] != 'n' {
+		return false
+	}
+	rest = rest[1:]
+	namespace, rest, ok := consumeDigits(rest)
+	return ok && rest == "" && controller != "" && controllerNamespace != "" && namespace != ""
+}
+
+func consumeDigits(s string) (string, string, bool) {
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 {
+		return "", s, false
+	}
+	return s[:i], s[i:], true
 }
 
 func preferredGPUCollectors(metrics []series.Metric) map[string]string {
