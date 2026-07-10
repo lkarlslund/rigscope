@@ -117,8 +117,8 @@ const averageLinePlugin = {
     const area = chart.chartArea;
     const xScale = chart.scales.x;
     if (!area || !xScale) return;
-    const averages = visibleDatasetAverages(chart);
-    if (!averages.length) return;
+    const series = visibleMovingAverageSeries(chart);
+    if (!series.length) return;
     const ctx = chart.ctx;
     ctx.save();
     ctx.beginPath();
@@ -126,26 +126,44 @@ const averageLinePlugin = {
     ctx.clip();
     ctx.font = '11px Inter, ui-sans-serif, system-ui, sans-serif';
     ctx.textBaseline = 'middle';
-    for (const avg of averages) {
-      const y = avg.scale.getPixelForValue(avg.value);
-      if (!Number.isFinite(y) || y < area.top || y > area.bottom) continue;
+    for (const avg of series) {
       ctx.strokeStyle = avg.color;
-      ctx.globalAlpha = 0.75;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([6, 5]);
+      ctx.globalAlpha = 0.82;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 5]);
       ctx.beginPath();
-      ctx.moveTo(area.left, y);
-      ctx.lineTo(area.right, y);
+      let drawing = false;
+      let previousX = null;
+      for (const point of avg.points) {
+        const x = xScale.getPixelForValue(point.x);
+        const y = avg.scale.getPixelForValue(point.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y) || y < area.top || y > area.bottom) {
+          drawing = false;
+          previousX = null;
+          continue;
+        }
+        if (!drawing || (previousX !== null && point.x - previousX > avg.gapThreshold)) {
+          ctx.moveTo(x, y);
+          drawing = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+        previousX = point.x;
+      }
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
-      const label = `avg ${formatValue(avg.value, axisSymbol(chart.$rigscopeGraph, avg.axisID))}`;
+      const last = avg.points[avg.points.length - 1];
+      if (!last) continue;
+      const labelY = avg.scale.getPixelForValue(last.y);
+      if (!Number.isFinite(labelY) || labelY < area.top || labelY > area.bottom) continue;
+      const label = `ma ${formatValue(last.y, axisSymbol(chart.$rigscopeGraph, avg.axisID))}`;
       const width = ctx.measureText(label).width + 8;
       const left = Math.max(area.left + 4, area.right - width - 4);
       ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
-      ctx.fillRect(left, y - 9, width, 18);
+      ctx.fillRect(left, labelY - 9, width, 18);
       ctx.fillStyle = avg.color;
-      ctx.fillText(label, left + 4, y);
+      ctx.fillText(label, left + 4, labelY);
     }
     ctx.restore();
   },
@@ -865,7 +883,7 @@ function graphCard(graph) {
       <div class="graph-tools">
         <button class="graph-icon-button drag-handle" title="Drag to reorder" aria-label="Drag to reorder">⠿</button>
         <button class="graph-icon-button ${graph.show_legend === false ? '' : 'active'}" data-action="legend" title="Toggle labels" aria-label="Toggle labels">Aa</button>
-        <button class="graph-icon-button ${graph.show_average ? 'active' : ''}" data-action="average" title="Toggle averages" aria-label="Toggle averages">avg</button>
+        <button class="graph-icon-button ${graph.show_average ? 'active' : ''}" data-action="average" title="Toggle moving average" aria-label="Toggle moving average">ma</button>
         <button class="graph-icon-button" data-action="reset" title="Reset zoom" aria-label="Reset zoom">↺</button>
         <button class="graph-icon-button" data-action="edit" title="Edit graph" aria-label="Edit graph">✎</button>
         <button class="graph-icon-button" data-action="hide" title="Hide graph" aria-label="Hide graph">−</button>
@@ -1024,7 +1042,7 @@ function axisSymbol(graph, axisID) {
   return axis?.symbol || axis?.unit || '';
 }
 
-function visibleDatasetAverages(chart) {
+function visibleMovingAverageSeries(chart) {
   const xScale = chart.scales.x;
   if (!xScale) return [];
   const minX = Number.isFinite(xScale.min) ? xScale.min : -Infinity;
@@ -1035,23 +1053,64 @@ function visibleDatasetAverages(chart) {
     const axisID = dataset.yAxisID || 'y';
     const scale = chart.scales[axisID];
     if (!scale) continue;
-    let total = 0;
-    let count = 0;
+    const source = [];
     for (const point of dataset.data || []) {
       if (!point || point.missing || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
       if (point.x < minX || point.x > maxX) continue;
-      total += point.y;
-      count++;
+      source.push(point);
     }
-    if (!count) continue;
+    if (source.length < 2) continue;
+    source.sort((a, b) => a.x - b.x);
+    const windowMs = movingAverageWindowMs(source, minX, maxX);
+    const halfWindow = windowMs / 2;
+    let total = 0;
+    let left = 0;
+    let right = 0;
+    const points = [];
+    for (const point of source) {
+      while (right < source.length && source[right].x <= point.x + halfWindow) {
+        total += source[right].y;
+        right++;
+      }
+      while (left < right && source[left].x < point.x - halfWindow) {
+        total -= source[left].y;
+        left++;
+      }
+      const count = right - left;
+      if (count < 2) continue;
+      points.push({ x: point.x, y: total / count });
+    }
+    if (points.length < 2) continue;
     out.push({
-      value: total / count,
+      points,
       color: dataset.borderColor || '#94a3b8',
       axisID,
       scale,
+      gapThreshold: gapThresholdForPoints(source.map(point => [point.x, point.y])),
     });
   }
   return out;
+}
+
+function movingAverageWindowMs(points, minX, maxX) {
+  const visibleSpan = Number.isFinite(minX) && Number.isFinite(maxX)
+    ? Math.max(1, maxX - minX)
+    : Math.max(1, points[points.length - 1].x - points[0].x);
+  const spacing = medianPointSpacing(points);
+  const wanted = Math.max(visibleSpan / 20, spacing * 5, 10_000);
+  return Math.min(wanted, 30 * 60_000, visibleSpan / 2);
+}
+
+function medianPointSpacing(points) {
+  if (!Array.isArray(points) || points.length < 2) return 1_000;
+  const deltas = [];
+  for (let i = 1; i < points.length; i++) {
+    const delta = points[i].x - points[i - 1].x;
+    if (Number.isFinite(delta) && delta > 0) deltas.push(delta);
+  }
+  if (!deltas.length) return 1_000;
+  deltas.sort((a, b) => a - b);
+  return deltas[Math.floor(deltas.length / 2)];
 }
 
 function openGraphLightbox(graph) {
