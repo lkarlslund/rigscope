@@ -1053,43 +1053,73 @@ function visibleMovingAverageSeries(chart) {
     const axisID = dataset.yAxisID || 'y';
     const scale = chart.scales[axisID];
     if (!scale) continue;
-    const source = [];
-    for (const point of dataset.data || []) {
-      if (!point || point.missing || !Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
-      if (point.x < minX || point.x > maxX) continue;
-      source.push(point);
+    const segments = visibleContinuousSegments(dataset.data || [], minX, maxX);
+    for (const segment of segments) {
+      const points = movingAveragePoints(segment, minX, maxX);
+      if (points.length < 2) continue;
+      out.push({
+        points,
+        color: dataset.borderColor || '#94a3b8',
+        axisID,
+        scale,
+        gapThreshold: gapThresholdForPoints(segment.map(point => [point.x, point.y])),
+      });
     }
-    if (source.length < 2) continue;
-    source.sort((a, b) => a.x - b.x);
-    const windowMs = movingAverageWindowMs(source, minX, maxX);
-    const halfWindow = windowMs / 2;
-    let total = 0;
-    let left = 0;
-    let right = 0;
-    const points = [];
-    for (const point of source) {
-      while (right < source.length && source[right].x <= point.x + halfWindow) {
-        total += source[right].y;
-        right++;
-      }
-      while (left < right && source[left].x < point.x - halfWindow) {
-        total -= source[left].y;
-        left++;
-      }
-      const count = right - left;
-      if (count < 2) continue;
-      points.push({ x: point.x, y: total / count });
-    }
-    if (points.length < 2) continue;
-    out.push({
-      points,
-      color: dataset.borderColor || '#94a3b8',
-      axisID,
-      scale,
-      gapThreshold: gapThresholdForPoints(source.map(point => [point.x, point.y])),
-    });
   }
   return out;
+}
+
+function visibleContinuousSegments(data, minX, maxX) {
+  const ordered = [...data]
+    .filter(point => point && Number.isFinite(point.x))
+    .sort((a, b) => a.x - b.x);
+  const finite = ordered
+    .filter(point => !point.missing && Number.isFinite(point.y))
+    .map(point => [point.x, point.y]);
+  const threshold = gapThresholdForPoints(finite);
+  const segments = [];
+  let current = [];
+  let previousX = null;
+  const flush = () => {
+    if (current.length >= 2) segments.push(current);
+    current = [];
+    previousX = null;
+  };
+  for (const point of ordered) {
+    if (point.x < minX || point.x > maxX) continue;
+    if (point.missing || !Number.isFinite(point.y)) {
+      flush();
+      continue;
+    }
+    if (previousX !== null && point.x - previousX > threshold) flush();
+    current.push(point);
+    previousX = point.x;
+  }
+  flush();
+  return segments;
+}
+
+function movingAveragePoints(source, minX, maxX) {
+  const windowMs = movingAverageWindowMs(source, minX, maxX);
+  const halfWindow = windowMs / 2;
+  let total = 0;
+  let left = 0;
+  let right = 0;
+  const points = [];
+  for (const point of source) {
+    while (right < source.length && source[right].x <= point.x + halfWindow) {
+      total += source[right].y;
+      right++;
+    }
+    while (left < right && source[left].x < point.x - halfWindow) {
+      total -= source[left].y;
+      left++;
+    }
+    const count = right - left;
+    if (count < 2) continue;
+    points.push({ x: point.x, y: total / count });
+  }
+  return points;
 }
 
 function movingAverageWindowMs(points, minX, maxX) {
