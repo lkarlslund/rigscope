@@ -2,7 +2,7 @@ name: Rolling release
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "17 0,12 * * *"
   workflow_dispatch:
     inputs:
       force_rebuild:
