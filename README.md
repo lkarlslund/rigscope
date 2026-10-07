@@ -4,7 +4,7 @@
 
 ![rigscope dashboard](docs/assets/rigscope-dashboard.png)
 
-The binary is both the daemon and the CLI. Use `rigscope serve` to run the daemon; use commands such as `rigscope status` and `rigscope metrics` to query the running daemon over HTTP.
+The binary is both the dashboard, daemon, and CLI. Run `rigscope` with no arguments for the live terminal dashboard. It uses a running daemon when one is available and otherwise collects locally with zero configuration. Use `rigscope serve` for continuous collection, persistence, the web UI, and remote clients; commands such as `rigscope status` and `rigscope metrics` query that daemon over HTTP.
 
 The old workload/event runner still exists as a legacy command, but the current direction is an always-on monitor first. Workload events and stdout-fed datapoints are intentionally deferred.
 
@@ -39,8 +39,11 @@ curl -fsSL https://raw.githubusercontent.com/lkarlslund/rigscope/master/scripts/
 Manual source runs are mainly for development:
 
 ```bash
+go run ./cmd/rigscope
 go run ./cmd/rigscope serve
 ```
+
+The terminal dashboard keeps every graph on one screen; use `Space` to pause and `q` to quit. Summary cards automatically reflow and resize so every detected device remains visible, and their plots expand to consume the available card height. Every terminal receives high-resolution Unicode Braille plots, with a truecolor palette when supported (including Kitty).
 
 Then open:
 

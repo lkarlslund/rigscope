@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/lkarlslund/rigscope/internal/buildinfo"
 	"github.com/lkarlslund/rigscope/internal/collectors"
@@ -22,6 +23,7 @@ import (
 	"github.com/lkarlslund/rigscope/internal/run"
 	"github.com/lkarlslund/rigscope/internal/series"
 	"github.com/lkarlslund/rigscope/internal/store"
+	"github.com/lkarlslund/rigscope/internal/tui"
 	"github.com/lkarlslund/rigscope/internal/web"
 )
 
@@ -42,11 +44,20 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	}
 	root := &cobra.Command{
 		Use:           "rigscope",
-		Short:         "Continuous hardware telemetry service",
+		Short:         "Live hardware telemetry dashboard and service",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return cmd.Help()
+			file, ok := stdout.(*os.File)
+			if !ok || !term.IsTerminal(int(file.Fd())) {
+				return cmd.Help()
+			}
+			ctx, stop := signalContext(cmd.Context())
+			defer stop()
+			return tui.Run(ctx, tui.Options{
+				ServerURL: clientOpts.serverURL,
+				Kitty:     os.Getenv("KITTY_WINDOW_ID") != "" || strings.EqualFold(os.Getenv("TERM"), "xterm-kitty"),
+			})
 		},
 	}
 	root.SetOut(stdout)

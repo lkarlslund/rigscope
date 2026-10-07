@@ -7,3 +7,4 @@ data/
 data-dev/
 *.test
 coverage.out
+/rigscope
