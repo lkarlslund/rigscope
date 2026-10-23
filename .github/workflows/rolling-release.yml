@@ -79,14 +79,12 @@ jobs:
               tag="$latest_tag"
               changelog_range="${latest_tag}..HEAD"
             else
-              previous_number="${latest_tag#r}"
-              next_number=$((10#$previous_number + 1))
-              tag="$(printf 'r%04d' "$next_number")"
+              # The release number is the commit count on master.
+              tag="$(printf 'r%04d' "$(git rev-list --count HEAD)")"
               changelog_range="${latest_tag}..HEAD"
             fi
           else
-            next_number=1
-            tag="$(printf 'r%04d' "$next_number")"
+            tag="$(printf 'r%04d' "$(git rev-list --count HEAD)")"
             changelog_range="HEAD"
           fi
 
