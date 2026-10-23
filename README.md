@@ -10,17 +10,15 @@ The old workload/event runner still exists as a legacy command, but the current 
 
 ## Quick Start
 
-Install the latest daily release as a system service instead of building from source. The binary installs itself: on Linux with `sudo`, on Windows from an elevated (Run as administrator) PowerShell.
+Download the latest daily build for your platform from the [releases page](https://github.com/lkarlslund/rigscope/releases/latest) and install it as a system service. The binary installs itself: on Linux with `sudo`, on Windows from an elevated (Run as administrator) PowerShell.
 
 ```bash
-curl -fsSLo rigscope https://github.com/lkarlslund/rigscope/releases/latest/download/rigscope-linux-amd64
-chmod +x rigscope
-sudo ./rigscope service install
+chmod +x rigscope-*-linux-amd64
+sudo ./rigscope-*-linux-amd64 service install
 ```
 
 ```powershell
-Invoke-WebRequest https://github.com/lkarlslund/rigscope/releases/latest/download/rigscope-windows-amd64.exe -OutFile rigscope.exe
-.\rigscope.exe service install
+.\rigscope-<tag>-windows-amd64.exe service install
 ```
 
 Then open:
