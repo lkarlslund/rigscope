@@ -10,13 +10,18 @@ The old workload/event runner still exists as a legacy command, but the current 
 
 ## Quick Start
 
-For Linux, install the latest daily release instead of building from source:
+Install the latest daily release as a system service instead of building from source. The binary installs itself: on Linux with `sudo`, on Windows from an elevated (Run as administrator) PowerShell.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lkarlslund/rigscope/master/scripts/install.sh | sudo bash
+curl -fsSLo rigscope https://github.com/lkarlslund/rigscope/releases/latest/download/rigscope-linux-amd64
+chmod +x rigscope
+sudo ./rigscope service install
 ```
 
-The installer downloads the latest `linux-amd64` release binary, creates a dedicated `rigscope` system user, installs the binary under `/opt/rigscope`, stores data under `/opt/rigscope/data`, installs a systemd service, then enables and starts it immediately.
+```powershell
+Invoke-WebRequest https://github.com/lkarlslund/rigscope/releases/latest/download/rigscope-windows-amd64.exe -OutFile rigscope.exe
+.\rigscope.exe service install
+```
 
 Then open:
 
@@ -24,17 +29,24 @@ Then open:
 http://127.0.0.1:7077
 ```
 
-To uninstall the service and binary while keeping data:
+`install` copies the running binary into place, registers the service to start at boot, and starts it. Re-run `install` with a newer binary to upgrade in place: it replaces the binary, rewrites the service definition, and restarts the service, keeping the data.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/lkarlslund/rigscope/master/scripts/uninstall.sh | sudo bash
+```text
+rigscope service install [--addr] [--interval 1s] [--retention 0] [--log-level info] [--no-start]
+rigscope service start | stop | restart
+rigscope service status
+rigscope service uninstall [--remove-data]
 ```
 
-To also remove `/opt/rigscope/data` and the `rigscope` user/group:
+| | Linux | Windows | macOS |
+|---|---|---|---|
+| Service manager | systemd unit `rigscope.service`, runs as the `rigscope` system user | Service Control Manager, service `rigscope`, delayed automatic start | launchd daemon `com.github.lkarlslund.rigscope` |
+| Binary | `/opt/rigscope/rigscope` | `%ProgramFiles%\rigscope\rigscope.exe` | `/usr/local/bin/rigscope` |
+| Data | `/opt/rigscope/data` | `%ProgramData%\rigscope\data` | `/Library/Application Support/rigscope/data` |
+| Log | journald: `journalctl -u rigscope` | `%ProgramData%\rigscope\logs\rigscope.log` | `/Library/Logs/rigscope/rigscope.log` |
+| Default `--addr` | `0.0.0.0:7077` | `127.0.0.1:7077` | `127.0.0.1:7077` |
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/lkarlslund/rigscope/master/scripts/uninstall.sh | sudo RIGSCOPE_REMOVE_DATA=1 bash
-```
+All three restart the daemon after a crash or error exit. Override the locations with `--binary`, `--data-dir`, and `--log-file`, and pass the same flags to later `service` commands. On Windows, a non-loopback `--addr` also needs the port allowed through the firewall. `uninstall --remove-data` also deletes the data directory, and on Linux the `rigscope` user and group. There is no macOS release build yet; build from source with `go build ./cmd/rigscope`.
 
 Manual source runs are mainly for development:
 
@@ -125,7 +137,7 @@ go run ./cmd/rigscope serve --no-rocm --no-zenpower
 
 ## Storage
 
-Samples are stored under `data/tsdb` by default when running manually, or `/opt/rigscope/data/tsdb` when installed with `install.sh`, using `github.com/nakabonne/tstorage`, an embedded Go time-series database. History is unlimited by default; set `--retention` to a duration such as `168h` if you want pruning. The dependency is Apache-2.0 licensed, which is permissive and compatible with an MIT-licensed application; keep its notice/license text when distributing binaries or bundled source.
+Samples are stored under `data/tsdb` by default when running manually, or `/opt/rigscope/data/tsdb` when installed with `rigscope service install` on Linux, using `github.com/nakabonne/tstorage`, an embedded Go time-series database. History is unlimited by default; set `--retention` to a duration such as `168h` if you want pruning. The dependency is Apache-2.0 licensed, which is permissive and compatible with an MIT-licensed application; keep its notice/license text when distributing binaries or bundled source.
 
 Current metric examples:
 

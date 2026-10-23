@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -76,7 +77,7 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Continuously collect telemetry and serve the web UI",
 		Args:  cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
-			return serveCommand(serveOpts)
+			return runServe(serveOpts)
 		},
 	}
 	serveCmd.Flags().StringVar(&serveOpts.addr, "addr", serveOpts.addr, "HTTP listen address")
@@ -84,6 +85,7 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	serveCmd.Flags().DurationVar(&serveOpts.interval, "interval", serveOpts.interval, "telemetry sample interval")
 	serveCmd.Flags().DurationVar(&serveOpts.retention, "retention", serveOpts.retention, "time-series retention period; 0 disables retention pruning")
 	serveCmd.Flags().StringVar(&serveOpts.logLevel, "log-level", serveOpts.logLevel, "log level: debug, info, warn, error")
+	serveCmd.Flags().StringVar(&serveOpts.logFile, "log-file", "", "append output to this file instead of stdout/stderr")
 	serveCmd.Flags().BoolVar(&serveOpts.noNVIDIA, "no-nvidia", false, "disable nvidia-smi collector")
 	serveCmd.Flags().BoolVar(&serveOpts.noROCM, "no-rocm", false, "disable rocm-smi collector")
 	serveCmd.Flags().BoolVar(&serveOpts.noZenpower, "no-zenpower", false, "disable zenpower CPU package collector")
@@ -145,6 +147,9 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 	}
 
 	root.AddCommand(serveCmd, runCmd, versionCmd, statusCmd, metricsCmd)
+	if serviceSupported {
+		root.AddCommand(newServiceCommand(&clientOpts))
+	}
 	return root
 }
 
@@ -223,12 +228,27 @@ type serveOptions struct {
 	interval   time.Duration
 	retention  time.Duration
 	logLevel   string
+	logFile    string
 	noNVIDIA   bool
 	noROCM     bool
 	noZenpower bool
 }
 
-func serveCommand(opts serveOptions) error {
+// serveCommand runs the daemon until ctx is cancelled.
+func serveCommand(ctx context.Context, opts serveOptions) error {
+	if opts.logFile != "" {
+		f, err := openLogFile(opts.logFile)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = f.Close()
+		}()
+		os.Stdout = f
+		os.Stderr = f
+		_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+	}
+
 	found, err := collectors.Default(collectors.DefaultOptions{
 		NVIDIA:   !opts.noNVIDIA,
 		ROCM:     !opts.noROCM,
@@ -249,9 +269,7 @@ func serveCommand(opts serveOptions) error {
 		_ = db.Close()
 	}()
 
-	signalCtx, stop := signalContext(context.Background())
-	defer stop()
-	ctx, cancel := context.WithCancel(signalCtx)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	level, err := parseLogLevel(opts.logLevel)

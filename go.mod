@@ -10,6 +10,7 @@ require (
 	github.com/nakabonne/tstorage v0.3.6
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/sys v0.41.0
 	golang.org/x/term v0.40.0
 )
 
@@ -40,6 +41,5 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 )

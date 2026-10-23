@@ -53,6 +53,10 @@ jobs:
               "rigscope-${tag}-linux-amd64.sha256"
               "rigscope-${tag}-windows-amd64.exe"
               "rigscope-${tag}-windows-amd64.exe.sha256"
+              "rigscope-linux-amd64"
+              "rigscope-linux-amd64.sha256"
+              "rigscope-windows-amd64.exe"
+              "rigscope-windows-amd64.exe.sha256"
             )
 
             mapfile -t release_assets < <(gh release view "$tag" --json assets --jq '.assets[].name')
@@ -140,6 +144,9 @@ jobs:
             -o "dist/rigscope-${TAG}-linux-amd64" \
             ./cmd/rigscope
           sha256sum "dist/rigscope-${TAG}-linux-amd64" > "dist/rigscope-${TAG}-linux-amd64.sha256"
+          # Unversioned copy so releases/latest/download/rigscope-linux-amd64 always resolves.
+          cp "dist/rigscope-${TAG}-linux-amd64" dist/rigscope-linux-amd64
+          (cd dist && sha256sum rigscope-linux-amd64 > rigscope-linux-amd64.sha256)
 
       - name: Build Windows x64 artifact
         if: steps.meta.outputs.changed == 'true'
@@ -159,6 +166,8 @@ jobs:
             -o "dist/rigscope-${TAG}-windows-amd64.exe" \
             ./cmd/rigscope
           sha256sum "dist/rigscope-${TAG}-windows-amd64.exe" > "dist/rigscope-${TAG}-windows-amd64.exe.sha256"
+          cp "dist/rigscope-${TAG}-windows-amd64.exe" dist/rigscope-windows-amd64.exe
+          (cd dist && sha256sum rigscope-windows-amd64.exe > rigscope-windows-amd64.exe.sha256)
 
       - name: Publish GitHub release
         if: steps.meta.outputs.changed == 'true'
@@ -174,6 +183,10 @@ jobs:
               "dist/rigscope-${TAG}-linux-amd64.sha256" \
               "dist/rigscope-${TAG}-windows-amd64.exe" \
               "dist/rigscope-${TAG}-windows-amd64.exe.sha256" \
+              dist/rigscope-linux-amd64 \
+              dist/rigscope-linux-amd64.sha256 \
+              dist/rigscope-windows-amd64.exe \
+              dist/rigscope-windows-amd64.exe.sha256 \
               --clobber
             gh release edit "$TAG" \
               --title "$TAG" \
@@ -186,5 +199,9 @@ jobs:
               "dist/rigscope-${TAG}-linux-amd64" \
               "dist/rigscope-${TAG}-linux-amd64.sha256" \
               "dist/rigscope-${TAG}-windows-amd64.exe" \
-              "dist/rigscope-${TAG}-windows-amd64.exe.sha256"
+              "dist/rigscope-${TAG}-windows-amd64.exe.sha256" \
+              dist/rigscope-linux-amd64 \
+              dist/rigscope-linux-amd64.sha256 \
+              dist/rigscope-windows-amd64.exe \
+              dist/rigscope-windows-amd64.exe.sha256
           fi
