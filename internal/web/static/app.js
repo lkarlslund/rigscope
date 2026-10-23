@@ -230,9 +230,10 @@ function labelForMetric(metric) {
 function metricLegend(metric, transform = '') {
   const summary = metricLabelSummary(metric);
   if (summary) {
+    if (metric.labels?.collector === 'corsair_axi') return summary;
     if (metric.name.startsWith('gpu_')) return summary;
     if (metric.name === 'cpu_package_power_w') return summary;
-    if (metric.name === 'hwmon_power_w') return summary;
+    if (metric.name === 'hwmon_power_w' || metric.name === 'rapl_power_w') return summary;
     if (metric.name === 'temperature_celsius' || metric.name.startsWith('gpu_temp')) return summary;
     if (metric.name.startsWith('disk_') || metric.name.startsWith('network_')) return `${compactMetricName(metric.name, transform)} ${summary}`;
     if (metric.name === 'filesystem_used_bytes' || metric.name === 'filesystem_free_bytes') return `${compactMetricName(metric.name, transform)} ${summary}`;
@@ -258,6 +259,9 @@ function metricLabelSummary(metric) {
     case 'zenpower':
       if (metric.name === 'cpu_package_power_w') return 'CPU package';
       break;
+    case 'rapl':
+    case 'corsair_axi':
+      return labels.sensor || '';
     case 'nvidia':
       return compactDeviceName(labels.device);
     case 'drm':
@@ -633,19 +637,17 @@ function renderCollectorAlert(errors = []) {
 }
 
 function totalKnownPower(points) {
-  let total = 0;
-  let count = 0;
-  for (const point of points) {
-    if (!isUsagePowerPoint(point) || !Number.isFinite(point.value)) continue;
-    total += point.value;
-    count++;
-  }
-  return count ? total : null;
+  const usage = usagePowerSelection(points.filter(point => Number.isFinite(point.value)));
+  if (!usage.length) return null;
+  return usage.reduce((sum, point) => sum + point.value, 0);
 }
 
-function isUsagePowerPoint(point) {
-  if (!isUsagePowerMetric(point)) return false;
-  return Number.isFinite(point.value);
+// Wall power from a PSU already includes every component, so it replaces the
+// component sum when present.
+function usagePowerSelection(metrics) {
+  const usage = metrics.filter(isUsagePowerMetric);
+  const wall = usage.filter(metric => metric.kind === 'power_input');
+  return wall.length ? wall : usage;
 }
 
 function isUsagePowerMetric(metric) {
@@ -654,6 +656,8 @@ function isUsagePowerMetric(metric) {
   if (metric.kind !== 'power' && metric.unit !== 'watt' && metric.symbol !== 'W') return false;
   if (name.includes('limit') || name.includes('cap')) return false;
   if (labels.collector === 'power_supply') return false;
+  // Parts of another reading (CPU cores, PSU rails), which would double count.
+  if (metric.kind === 'power_component') return false;
   return true;
 }
 
@@ -715,8 +719,7 @@ async function refreshSummaryEnergy() {
 function uniqueUsagePowerMetrics() {
   const out = [];
   const seen = new Set();
-  for (const metric of catalog.metrics || []) {
-    if (!isUsagePowerMetric(metric)) continue;
+  for (const metric of usagePowerSelection(catalog.metrics || [])) {
     const key = metricKey(metric);
     if (seen.has(key)) continue;
     seen.add(key);

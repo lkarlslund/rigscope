@@ -54,3 +54,14 @@ func systemdQuote(s string) string {
 	}
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`).Replace(s) + `"`
 }
+
+// udevRules grants the service group access to hardware that is root-only by
+// default: the RAPL energy counters (CPU power) and the Corsair AXi PSU's USB
+// dongle. Group access rather than world access, since the energy counters
+// enable power side channels (CVE-2020-8694).
+func udevRules() string {
+	return `# Written by rigscope service install; removed by rigscope service uninstall.
+SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", RUN+="/bin/chgrp ` + systemdGroup + ` /sys%p/energy_uj", RUN+="/bin/chmod g+r /sys%p/energy_uj"
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="1b1c", ATTR{idProduct}=="1c11", GROUP="` + systemdGroup + `", MODE="0660"
+`
+}

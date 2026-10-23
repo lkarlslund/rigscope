@@ -166,3 +166,15 @@ func TestSystemdQuote(t *testing.T) {
 		}
 	}
 }
+
+func TestUdevRulesUseServiceGroup(t *testing.T) {
+	rules := udevRules()
+	for _, want := range []string{
+		`RUN+="/bin/chgrp rigscope /sys%p/energy_uj"`,
+		`ATTR{idVendor}=="1b1c", ATTR{idProduct}=="1c11", GROUP="rigscope", MODE="0660"`,
+	} {
+		if !strings.Contains(rules, want) {
+			t.Errorf("udev rules missing %s:\n%s", want, rules)
+		}
+	}
+}

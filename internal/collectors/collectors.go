@@ -71,17 +71,28 @@ func Default(opts DefaultOptions) ([]Collector, error) {
 }
 
 func preferLowOverheadCollectors(cs []Collector) []Collector {
-	if !hasAMDGPUFromDRM(cs) {
-		return cs
+	skip := map[string]bool{
+		"rocm": hasAMDGPUFromDRM(cs),
+		// Both report CPU package power; keep zenpower so existing series continue.
+		"rapl": hasCollector(cs, "zenpower"),
 	}
 	out := make([]Collector, 0, len(cs))
 	for _, collector := range cs {
-		if collector.Name() == "rocm" {
+		if skip[collector.Name()] {
 			continue
 		}
 		out = append(out, collector)
 	}
 	return out
+}
+
+func hasCollector(cs []Collector, name string) bool {
+	for _, collector := range cs {
+		if collector.Name() == name {
+			return true
+		}
+	}
+	return false
 }
 
 func hasAMDGPUFromDRM(cs []Collector) bool {

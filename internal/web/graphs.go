@@ -274,6 +274,7 @@ func DefaultGraphs(metrics []series.Metric) []Graph {
 			},
 		})
 	}
+	add("builtin-psu", "PSU Output", "Power", "psu_output_power_w", "psu_rail_power_w", "psu_connector_power_w")
 	add("builtin-cpu-usage", "CPU Usage", "Utilization", "cpu_user_pct", "cpu_system_pct", "cpu_iowait_pct", "cpu_irq_pct")
 	add("builtin-gpu-util", "GPU Load", "Utilization", "gpu_util_pct")
 	add("builtin-gpu-memory", "GPU Memory", "Memory", "gpu_mem_used_mib", "gpu_vram_used_bytes", "gpu_gtt_used_bytes")
@@ -382,6 +383,11 @@ func isPowerMetric(metric series.Metric) bool {
 		return false
 	}
 	if metric.Kind == "power_limit" {
+		return false
+	}
+	switch metric.Name {
+	case "psu_output_power_w", "psu_rail_power_w", "psu_connector_power_w":
+		// Shown on their own PSU graph; the input power stays on this one.
 		return false
 	}
 	name := strings.ToLower(metric.Name)

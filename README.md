@@ -117,11 +117,15 @@ Collectors self-register and are autodetected by default. Windows supports nativ
 - `drm`: Linux AMD/Intel DRM sysfs GPU utilization, VRAM/GTT, power, and temperature where exposed.
 - `rocm`: Linux fallback AMD GPU/APU power, utilization, temperature, and memory through the ROCm SMI library when DRM/sysfs does not cover the device.
 - `zenpower`: Linux CPU package power from hwmon `power1_input`.
+- `rapl`: Linux CPU package, core, uncore, and DRAM power from the powercap RAPL energy counters (Intel, and AMD on recent kernels). Skipped when `zenpower` is present.
+- `corsair_axi`: Linux Corsair AXi PSU (USB `1b1c:1c11`, e.g. AX1600i) wall input power, voltage and current, total and per-rail output, per-connector 12V power, temperatures, fan speed, and efficiency, read from user space over usbfs. The 12V connectors are read one per sample, so each refreshes every 12 samples.
 - `load`: Linux load average from `/proc/loadavg`.
 - `socket`: Linux socket and TCP connection counts from `/proc/net`.
 - `thermal`: Linux hwmon and thermal-zone temperatures from `/sys`.
 - `power_supply`: Linux battery/PSU capacity, power, energy, and temperature from `/sys/class/power_supply`.
 - `xdna`: Linux AMD XDNA/Ryzen AI NPU presence, identity, PCI metadata, and runtime-PM residency from `/sys/class/accel`.
+
+The RAPL energy counters and the AXi USB dongle are root-only by default. `rigscope service install` on Linux writes `/etc/udev/rules.d/70-rigscope.rules`, which gives the `rigscope` group access to both. When running as your own user instead, a rule such as `SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="1b1c", ATTR{idProduct}=="1c11", TAG+="uaccess"` grants the logged-in user the PSU.
 
 Metric metadata includes `unit` and `symbol`, such as `watt`/`W`, `celsius`/`°C`, `byte`/`B`, `percent`/`%`, and `count`/`count`.
 

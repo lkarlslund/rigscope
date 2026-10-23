@@ -505,11 +505,13 @@ func metricLegend(metric series.Metric, transform string) string {
 		return metricDisplayNameForTransform(metric.Name, transform) + labelSuffix(metric)
 	}
 	switch {
+	case metric.Labels["collector"] == "corsair_axi":
+		return summary
 	case strings.HasPrefix(metric.Name, "gpu_"):
 		return summary
 	case metric.Name == "cpu_package_power_w":
 		return summary
-	case metric.Name == "hwmon_power_w":
+	case metric.Name == "hwmon_power_w", metric.Name == "rapl_power_w":
 		return summary
 	case metric.Name == "temperature_celsius", strings.HasPrefix(metric.Name, "gpu_temp"):
 		return summary
@@ -591,6 +593,8 @@ func metricLabelSummary(metric series.Metric) string {
 		if metric.Name == "cpu_package_power_w" {
 			return "CPU package"
 		}
+	case "rapl", "corsair_axi":
+		return labels["sensor"]
 	case "nvidia":
 		return compactDeviceName(labels["device"])
 	case "drm", "rocm":

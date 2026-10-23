@@ -23,6 +23,7 @@ const (
 
 	systemdUnitName = "rigscope.service"
 	systemdUnitPath = "/etc/systemd/system/" + systemdUnitName
+	udevRulesPath   = "/etc/udev/rules.d/70-rigscope.rules"
 )
 
 func defaultServiceConfig() serviceConfig {
@@ -109,6 +110,9 @@ func serviceInstall(out io.Writer, cfg serviceConfig, start bool) error {
 	if err := os.Chown(cfg.dataDir, uid, gid); err != nil {
 		return err
 	}
+	if err := installUdevRules(out); err != nil {
+		return err
+	}
 	if err := os.WriteFile(systemdUnitPath, []byte(systemdUnit(cfg)), 0o644); err != nil {
 		return err
 	}
@@ -133,6 +137,35 @@ func serviceInstall(out io.Writer, cfg serviceConfig, start bool) error {
 	return err
 }
 
+// installUdevRules writes the hardware access rules and applies them to
+// devices that are already present.
+func installUdevRules(out io.Writer) error {
+	if err := os.WriteFile(udevRulesPath, []byte(udevRules()), 0o644); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(out, "udev rules:", udevRulesPath); err != nil {
+		return err
+	}
+	reloadUdev(out)
+	return nil
+}
+
+// reloadUdev is best effort: without udev the service still runs, only
+// without access to the power sensors.
+func reloadUdev(out io.Writer) {
+	for _, args := range [][]string{
+		{"control", "--reload"},
+		{"trigger", "--action=add", "--subsystem-match=powercap"},
+		{"trigger", "--action=add", "--subsystem-match=usb", "--attr-match=idVendor=1b1c"},
+		{"settle"},
+	} {
+		if _, err := runTool("udevadm", args...); err != nil {
+			_, _ = fmt.Fprintln(out, "warning:", err)
+			return
+		}
+	}
+}
+
 func serviceUninstall(out io.Writer, cfg serviceConfig, removeData bool) error {
 	if err := requireRoot(); err != nil {
 		return err
@@ -142,11 +175,12 @@ func serviceUninstall(out io.Writer, cfg serviceConfig, removeData bool) error {
 			return err
 		}
 	}
-	for _, path := range []string{systemdUnitPath, cfg.binary} {
+	for _, path := range []string{systemdUnitPath, udevRulesPath, cfg.binary} {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
+	reloadUdev(out)
 	if err := systemctl("daemon-reload"); err != nil {
 		return err
 	}

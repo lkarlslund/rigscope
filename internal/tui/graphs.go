@@ -52,7 +52,7 @@ func (m model) graphData(kind string) ([]graphSeries, string, string) {
 		return m.seriesFromPoints(points, 6), "THERMALS", "°C"
 	case "power":
 		points := m.pointsMatching(func(p series.Point) bool {
-			return p.Kind == "power" && p.Value > 0 && (p.Symbol == "W" || strings.Contains(p.Name, "power"))
+			return (p.Kind == "power" || p.Kind == "power_input") && p.Value > 0 && (p.Symbol == "W" || strings.Contains(p.Name, "power"))
 		})
 		return m.seriesFromPoints(points, 6), "POWER", "W"
 	default:

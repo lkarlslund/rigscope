@@ -288,7 +288,12 @@ func (m model) ioCard(width, height int, placement graphPlacement) string {
 }
 
 func (m model) powerCard(width, height int, placement graphPlacement) string {
-	power := max(0, m.sumKind("power"))
+	// Wall power from a PSU already includes every component.
+	power := m.sumKind("power_input")
+	if power <= 0 {
+		power = m.sumKind("power")
+	}
+	power = max(0, power)
 	powerData, _, _ := m.graphData("power")
 	plot := m.cardGraph(powerData, width-4, max(2, height-5), 9204, placement)
 	items := []string{metricLine("TOTAL", power, "W", orange, width-4), plot}
