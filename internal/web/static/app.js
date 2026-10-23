@@ -1367,14 +1367,16 @@ function applyLivePointsToCharts(graph, targets, points, now, liveRates) {
     if (!point) return;
     const transformed = liveSeriesValue(point, item, now, liveRates);
     if (!transformed.ok || paused) return;
-    updates.push({ index, value: normalizeSeriesValue(transformed.value, item, graph) });
+    updates.push({ index, raw: transformed.value, value: normalizeSeriesValue(transformed.value, item, graph) });
   });
   if (!updates.length) return;
-  const loadedRange = graphRanges.get(graph.id);
-  const cutoff = Math.min(now - timeRangeMs(), loadedRange?.start || now - timeRangeMs());
-  let anyChanged = false;
+  // Keep the loaded history in step with the charts, so rebuilding a chart
+  // from it (after loading older data on pan) does not drop live points.
+  appendLiveGraphData(graph, updates, now);
+  let retainFrom = Infinity;
   for (const chart of targets) {
-    let changed = false;
+    const cutoff = liveRetentionCutoff(chart, now);
+    retainFrom = Math.min(retainFrom, cutoff);
     for (const update of updates) {
       const data = chart.data.datasets[update.index]?.data;
       if (!data) continue;
@@ -1384,20 +1386,46 @@ function applyLivePointsToCharts(graph, targets, points, now, liveRates) {
         data.push({ x: now - 1, y: null, missing: true });
       }
       data.push({ x: now, y: update.value });
-      while (data.length && data[0].x < cutoff) data.shift();
-      changed = true;
+      trimPointsBefore(data, cutoff, point => point.x);
     }
-    if (changed) {
-      anyChanged = true;
-      chart.update('none');
+    chart.update('none');
+  }
+  for (const series of graphData.get(graph.id) || []) {
+    if (series?.points) trimPointsBefore(series.points, retainFrom, point => point[0]);
+  }
+  const loadedRange = graphRanges.get(graph.id);
+  graphRanges.set(graph.id, {
+    start: Math.max(loadedRange?.start ?? retainFrom, retainFrom),
+    end: Math.max(loadedRange?.end || now, now),
+  });
+}
+
+// liveRetentionCutoff is the oldest timestamp a live chart keeps: the selected
+// range, extended to whatever older span the user has panned or zoomed to.
+function liveRetentionCutoff(chart, now) {
+  const windowStart = now - timeRangeMs();
+  const visibleMin = chart.scales.x?.min;
+  if (chart.isZoomedOrPanned?.() && Number.isFinite(visibleMin)) return Math.min(windowStart, visibleMin);
+  return windowStart;
+}
+
+function appendLiveGraphData(graph, updates, now) {
+  const data = graphData.get(graph.id);
+  if (!data) return;
+  for (const update of updates) {
+    let series = data[update.index];
+    if (!series) {
+      series = { id: graph.series?.[update.index]?.id, points: [] };
+      data[update.index] = series;
     }
+    (series.points ||= []).push([now, update.raw]);
   }
-  if (anyChanged) {
-    graphRanges.set(graph.id, {
-      start: loadedRange?.start || cutoff,
-      end: Math.max(loadedRange?.end || now, now),
-    });
-  }
+}
+
+function trimPointsBefore(points, cutoff, timeOf) {
+  let drop = 0;
+  while (drop < points.length && timeOf(points[drop]) < cutoff) drop++;
+  if (drop) points.splice(0, drop);
 }
 
 function lastFinitePoint(data) {
