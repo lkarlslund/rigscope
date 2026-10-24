@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -110,5 +111,29 @@ func TestCollectorErrorsReportsFailedCollectors(t *testing.T) {
 	}
 	if got[1]["collector"] != "unknown" || got[1]["error"] != "missing collector name" {
 		t.Fatalf("second error = %#v", got[1])
+	}
+}
+
+func TestLogFailuresReportsTransitionsOnly(t *testing.T) {
+	var buf bytes.Buffer
+	mon := &Monitor{Log: slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return a
+		},
+	}))}
+	fail := []map[string]string{{"collector": "corsair_axi", "error": "usb write: connection timed out"}}
+	mon.logFailures(fail)
+	mon.logFailures(fail)
+	mon.logFailures(nil)
+	mon.logFailures(nil)
+
+	want := `level=WARN msg="collector failing" collector=corsair_axi error="usb write: connection timed out"
+level=INFO msg="collector recovered" collector=corsair_axi
+`
+	if buf.String() != want {
+		t.Fatalf("log =\n%s\nwant\n%s", buf.String(), want)
 	}
 }

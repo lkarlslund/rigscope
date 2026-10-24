@@ -24,6 +24,7 @@ const (
 	usbdevfsClaimInterface   = 0x8004550f // _IOR('U', 15, unsigned int)
 	usbdevfsReleaseInterface = 0x80045510 // _IOR('U', 16, unsigned int)
 	usbdevfsIoctl            = 0xc0105512 // _IOWR('U', 18, struct usbdevfs_ioctl)
+	usbdevfsClearHalt        = 0x80045515 // _IOR('U', 21, unsigned int)
 	usbdevfsDisconnect       = 0x5516     // _IO('U', 22)
 )
 
@@ -117,6 +118,13 @@ func (d *usbDevice) ioctl(req uintptr, arg unsafe.Pointer) error {
 		return errno
 	}
 	return nil
+}
+
+// clearHalt resets the data toggle and halt state of ep, both in the device
+// and in the host controller.
+func (d *usbDevice) clearHalt(ep uint8) error {
+	e := uint32(ep)
+	return d.ioctl(usbdevfsClearHalt, unsafe.Pointer(&e))
 }
 
 func (d *usbDevice) control(requestType, request uint8, value, index uint16, timeout time.Duration) error {

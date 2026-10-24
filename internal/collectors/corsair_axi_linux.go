@@ -93,6 +93,12 @@ func (c *CorsairAXi) open() error {
 		}
 		return err
 	}
+	// A USB reset, such as on resume from suspend, leaves the bulk endpoints
+	// out of sync and every transfer times out until they are cleared. Best
+	// effort: a failure here shows up as a transfer error below.
+	for _, ep := range []uint8{axiOutEndpoint, axiInEndpoint} {
+		_ = dev.clearHalt(ep)
+	}
 	// Enable the SiLabs USBXpress bridge (clear to send).
 	if err := dev.control(0x40, 0x02, 0x0002, 0, axiUSBTimeout); err != nil {
 		_ = dev.Close()
